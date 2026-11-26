@@ -493,7 +493,7 @@ function renderHome() {
     el('label', { class: 'field', for: 'title' }, el('span', { text: '모임 이름' }), input),
     el('div', { class: 'field' }, el('span', { text: '몇 명이 모여요?' }),
       capacityStepper(() => capacity, (v) => { capacity = v; }),
-      el('p', { class: 'muted small', text: '나를 포함한 인원이에요. 이만큼 다 표시해야 모두 되는 날이 보여요.' })),
+      el('p', { class: 'muted small', text: '나를 포함한 인원이에요. 모두 표시하면 다 같이 되는 날이 보여요.' })),
     el('div', { class: 'field' }, el('span', { text: '언제쯤 모일까요?' }),
       monthChips(nextMonths(6), picked, (ym) => (picked.has(ym) ? picked.delete(ym) : picked.add(ym))),
       el('p', { class: 'muted small', text: '여러 달을 골라도 돼요. 고른 달 안에서 가장 좋은 날을 찾아줘요.' })),
