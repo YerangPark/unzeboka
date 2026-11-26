@@ -6,6 +6,9 @@
 //   DRY_RUN=1                 지우지 않고 지울 대상만 보여줘요 (선택)
 //
 // 관리자 키로 접속하므로 보안 규칙과 상관없이 지울 수 있어요. 키는 절대 저장소에 올리지 마세요.
+//
+// 저장소가 공개라 Actions 로그도 누구나 볼 수 있어요.
+// 모임 ID는 곧 모임 링크라서, 로그에는 ID와 모임 이름을 남기지 않고 개수와 만든 날짜만 적어요.
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
@@ -48,14 +51,22 @@ for (const snap of [byCreated, byExpire]) {
 console.log(`${DRY_RUN ? '[미리보기] ' : ''}지울 모임 ${targets.size}개`);
 
 let deleted = 0;
-for (const [id, doc] of targets) {
-  const { title, createdAt } = doc.data();
+let failed = 0;
+for (const doc of targets.values()) {
+  const { createdAt } = doc.data();
   const made = createdAt?.toDate?.().toISOString().slice(0, 10) ?? '날짜 없음';
-  console.log(`- ${id} (만든 날 ${made}) ${title ?? ''}`);
+  console.log(`- 만든 날 ${made}`);
   if (DRY_RUN) continue;
-  // 모임 문서와 그 아래 members 기록까지 함께 지워요
-  await db.recursiveDelete(doc.ref);
-  deleted++;
+  try {
+    // 모임 문서와 그 아래 members 기록까지 함께 지워요
+    await db.recursiveDelete(doc.ref);
+    deleted++;
+  } catch (e) {
+    // 오류 메시지에 문서 경로(모임 ID)가 들어 있을 수 있어서 코드만 남겨요
+    failed++;
+    console.log(`  삭제 실패 (${e?.code ?? '알 수 없는 오류'})`);
+  }
 }
 
-console.log(DRY_RUN ? '미리보기라 아무것도 지우지 않았어요.' : `${deleted}개 모임을 지웠어요.`);
+console.log(DRY_RUN ? '미리보기라 아무것도 지우지 않았어요.' : `${deleted}개 모임을 지웠어요.${failed ? ` ${failed}개는 실패했어요.` : ''}`);
+if (failed) process.exitCode = 1;
