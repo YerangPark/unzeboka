@@ -735,6 +735,38 @@ function endDrag(e) {
 window.addEventListener('pointerup', endDrag);
 window.addEventListener('pointercancel', endDrag);
 
+/* 날짜 상세: 되는 사람 / 안 되는 사람 */
+const WHO_PATH = {
+  no: '<path d="M8 8l8 8M16 8l-8 8"/>',
+  ok: '<path d="M7 12.5l3.3 3.3L17 9"/>',
+};
+function whoIcon(kind) {
+  const i = el('span', { class: 'who-icon' });
+  i.innerHTML = `<svg viewBox="0 0 24 24">${WHO_PATH[kind]}</svg>`;
+  return i;
+}
+function whoRow(kind, title, people) {
+  return el('div', { class: `who-row ${kind}`, role: 'group', 'aria-label': `${title} ${people.length}명` },
+    el('div', { class: 'who-head', 'aria-hidden': 'true' },
+      whoIcon(kind),
+      el('span', { class: 'who-title', text: title }),
+      el('span', { class: 'who-count', text: people.length })),
+    people.length
+      ? el('div', { class: 'who-names' }, people.map((p) =>
+          el('span', { class: 'who-name' + (p.name === state.me ? ' me' : '') },
+            el('span', { class: 'dot', style: `--c:${colorOf(p.name)}` }), p.name)))
+      : el('span', { class: 'who-empty', text: '없음' }));
+}
+function waitingNote(pending) {
+  const cap = getCapacity();
+  const missing = cap ? Math.max(0, cap - state.members.length) : 0;
+  const parts = [
+    pending.length ? `${pending.map((p) => p.name).join(', ')} 표시 중` : null,
+    missing ? `${missing}명 아직 안 들어옴` : null,
+  ].filter(Boolean);
+  return parts.length ? el('p', { class: 'who-wait', text: parts.join(' · ') }) : null;
+}
+
 function nameLabels(arr) {
   return arr.length
     ? el('div', { class: 'names' }, arr.map((p) => el('span', { class: 'label', style: `--c:${colorOf(p.name)}` }, el('span', { class: 'dot' }), p.name)))
@@ -798,9 +830,10 @@ function renderSheet() {
       el('div', { class: 'sheet-head' },
         el('h3', {}, dateLabel(ds), hol ? el('small', { text: hol }) : null),
         closeBtn),
-      el('div', { class: 'row' }, el('b', { text: `안 되는 사람 ${unav.length}` }), nameLabels(unav)),
-      el('div', { class: 'row' }, el('b', { text: `되는 사람 ${ok.length}` }), nameLabels(ok)),
-      pending.length ? el('div', { class: 'row' }, el('b', { text: `표시 중 ${pending.length}` }), nameLabels(pending)) : null,
+      el('div', { class: 'who' },
+        whoRow('no', '안 돼요', unav),
+        whoRow('ok', '돼요', ok)),
+      waitingNote(pending),
       el('button', {
         class: 'pill big wide ' + (mine ? 'outline' : 'red'), type: 'button',
         text: mine ? '이 날 X 지우기' : '나도 이 날 안 돼요',
