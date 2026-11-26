@@ -973,13 +973,16 @@ function renderRoom() {
 function progressBar(total, doneCount, cap, missing) {
   const goal = Math.max(cap || 0, total);
   if (!goal) return null;
-  const text = cap
-    ? `${cap}명 중 ${total}명 참여, ${doneCount}명이 다 표시했어요` + (missing ? ` · ${missing}명 더 기다려요` : '')
-    : `${total}명 중 ${doneCount}명이 다 표시했어요`;
-  return el('div', { class: 'progress' },
+  // 막대와 같은 숫자를 짧게. 누가 표시 중인지는 이름표에서 보여요
+  const allDone = !missing && doneCount >= goal;
+  const line = allDone
+    ? el('p', {}, el('strong', { text: `${goal}명 모두 완료!` }))
+    : el('p', {}, el('strong', { text: `${doneCount}/${goal}명 완료` }),
+        missing ? ` · ${missing}명 아직 안 들어왔어요` : null);
+  return el('div', { class: 'progress' + (allDone ? ' all-done' : '') },
     el('div', { class: 'pbar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(goal), 'aria-valuenow': String(doneCount), 'aria-label': '다 표시한 사람' },
       el('i', { style: `width:${Math.round((doneCount / goal) * 100)}%` })),
-    el('p', { text }));
+    line);
 }
 
 /* 캘린더 터치: 표시 중에는 누르면 X, 쭉 그으면 여러 날.
