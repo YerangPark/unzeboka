@@ -8,7 +8,7 @@ const IN_APP = /NAVER|KAKAOTALK|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp
 // 초록(모두 되는 날)과 빨강(X 표시)은 의미가 있는 색이라 이름표 색에서 뺐어요
 const STICKER_COLORS = ['#1cb0f6', '#ce82ff', '#ff9600', '#ffc800', '#ff86d0', '#2b70c9', '#a56644', '#777777', '#00a8b5', '#6c5ce7'];
 const CAP_MIN = 2;
-const CAP_MAX = 30;
+const CAP_MAX = 10;   // 이름표 색 10가지와 맞춰서, 색이 겹치지 않게
 const CAP_DEFAULT = 4;
 const ROOM_TTL_MS = 30 * 24 * 60 * 60 * 1000;   // 모임은 만든 날부터 30일 뒤 사라져요
 const app = document.getElementById('app');
@@ -905,10 +905,13 @@ function renderRoom() {
         disabled: past,
       }, top);
       decorate(cell, ds, st, past);
+      // 다른 사람이 3명까지면 색 점만, 4명부터는 점 2개 + '+나머지' (좁은 칸에 들어가게)
       if (reveal && !past && st.others.length) {
+        const many = st.others.length > 3;
+        const shown = many ? st.others.slice(0, 2) : st.others;
         cell.append(el('span', { class: 'dots', 'aria-hidden': 'true' },
-          st.others.slice(0, 4).map((p) => el('i', { style: `--c:${colorOf(p.name)}` })),
-          st.others.length > 4 ? `+${st.others.length - 4}` : null));
+          shown.map((p) => el('i', { style: `--c:${colorOf(p.name)}` })),
+          many ? el('b', { text: `+${st.others.length - 2}` }) : null));
       }
       cal.append(cell);
       continue;

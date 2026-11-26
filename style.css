@@ -304,7 +304,8 @@ button.label:active { transform: translateY(2px); box-shadow: none; }
 .cell.past { background: var(--snow); border-color: transparent; box-shadow: none; cursor: default; }
 .cell.past .num, .cell.past .hol { color: #cfcfcf; }
 
-.dots { position: absolute; bottom: 5px; right: 5px; display: flex; gap: 2px; align-items: center; font-size: .6rem; font-weight: 800; color: var(--muted); }
+.dots { position: absolute; bottom: 5px; right: 5px; display: flex; gap: 2px; align-items: center; white-space: nowrap; z-index: 3; }
+.dots b { margin-left: 1px; font-size: .62rem; font-weight: 900; line-height: 1; color: var(--muted); }
 .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px var(--paper); }
 
 /* 점심·저녁 모임: 점심 칸 왼쪽 위에 날짜 숫자를 겹쳐 두고, 아래로 저녁 칸 */
@@ -622,6 +623,10 @@ body.sheet-open { overflow: hidden; }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 
 @media (max-width: 400px) {
+  /* 좁은 폰에서는 점과 +N을 작게 해서 칸 안에 들어가게 */
+  .dots { right: 3px; bottom: 4px; gap: 2px; }
+  .dots i { width: 6px; height: 6px; box-shadow: 0 0 0 1px var(--paper); }
+  .dots b { font-size: .56rem; }
   .wrap { padding-inline: 16px; }
   .cal { gap: 4px; }
   .cell { border-radius: 10px; }
