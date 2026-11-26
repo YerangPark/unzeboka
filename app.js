@@ -845,7 +845,9 @@ function renderRoom() {
   const slotTip = slotMode() ? '칸 위쪽은 점심, 아래쪽은 저녁이에요. ' : '';
   const hint = el('p', { class: 'hint', text: slotTip + (reveal
     ? '날짜를 누르면 누가 되고 안 되는지 보여요.'
-    : '다른 사람 표시는 가려져 있어요. 내 일정만 보고 안 되는 때에 X를 치세요.') });
+    : slotMode()
+      ? '안 되는 때를 눌러 X를 치세요. 쭉 그으면 여러 칸을 한 번에 칠 수 있어요.'
+      : '안 되는 날을 눌러 X를 치세요. 쭉 그으면 여러 날을 한 번에 칠 수 있어요.') });
 
   /* 캘린더 */
   const cal = el('div', { class: 'cal' + (reveal ? ' viewing' : ''), 'aria-label': `${y}년 ${m + 1}월 달력` });
@@ -949,7 +951,12 @@ function renderRoom() {
     done
       ? el('p', { class: 'done-msg' }, whoIcon('ok'), el('span', { text: '다 표시했어요. 바뀌면 언제든 고칠 수 있어요.' }))
       : el('p', { text: '안 되는 날을 다 쳤나요? 누르면 모두의 결과가 보여요.' }),
-    el('button', { class: 'pill small' + (done ? ' outline' : ''), type: 'button', 'data-k': 'done', text: done ? '아직 더 고칠래요' : '다 표시했어요', onclick: toggleDone }),
+    el('div', { class: 'done-actions' },
+      // 다 표시했는데 아직 안 들어온 사람이 있으면, 바로 초대할 수 있게
+      done && missing > 0
+        ? el('button', { class: 'pill small', type: 'button', 'data-k': 'invite', text: '친구 초대하기', onclick: shareLink })
+        : null,
+      el('button', { class: 'pill small' + (done ? ' outline' : ''), type: 'button', 'data-k': 'done', text: done ? '아직 더 고칠래요' : '다 표시했어요', onclick: toggleDone })),
   );
 
 

@@ -405,6 +405,7 @@ button.label:active { transform: translateY(2px); box-shadow: none; }
   font-weight: 800;
 }
 .donebar .pill { margin-bottom: 4px; }
+.done-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .donebar.is-done { border-color: #c9f5a3; background: #f1ffe6; color: var(--green-dark); }
 /* 초록 박스 안에서는 버튼도 초록 계열로 */
 .donebar.is-done .pill.outline { --fg: var(--green-dark); --edge: #c9f5a3; border-color: #c9f5a3; }
