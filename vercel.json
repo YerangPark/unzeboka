@@ -1,3 +1,6 @@
 {
-  "cleanUrls": true
+  "rewrites": [
+    { "source": "/intro", "destination": "/intro.html" },
+    { "source": "/privacy", "destination": "/privacy.html" }
+  ]
 }
