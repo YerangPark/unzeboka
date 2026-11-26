@@ -707,7 +707,9 @@ function renderRoom() {
       },
         el('span', { class: 'dot' }),
         p.name,
-        el('span', { class: 'st' + (isDone(p) ? ' done' : ''), text: isDone(p) ? '✓ 완료' : '표시 중' }),
+        isDone(p)
+          ? el('span', { class: 'st done' }, checkMark(), '완료')
+          : el('span', { class: 'st', text: '표시 중' }),
         state.isHost && p.id !== myKey
           ? el('button', { class: 'rm', type: 'button', 'aria-label': `${p.name} 빼기`, title: '모임에서 빼기', text: '×', onclick: () => removeMember(p) })
           : null,
@@ -928,6 +930,12 @@ const WHO_PATH = {
   no: '<path d="M8 8l8 8M16 8l-8 8"/>',
   ok: '<path d="M7 12.5l3.3 3.3L17 9"/>',
 };
+// 원 없이 체크 모양만 (이름표 '완료' 앞)
+function checkMark() {
+  const i = el('span', { class: 'check-mark', 'aria-hidden': 'true' });
+  i.innerHTML = '<svg viewBox="0 0 16 16"><path d="M3 8.6l3.2 3.1L13 4.6"/></svg>';
+  return i;
+}
 function whoIcon(kind) {
   const i = el('span', { class: 'who-icon' });
   i.innerHTML = `<svg viewBox="0 0 24 24">${WHO_PATH[kind]}</svg>`;
