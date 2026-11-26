@@ -608,7 +608,8 @@ body.sheet-open { overflow: hidden; }
 .home-icon { width: 32px; height: 32px; flex: none; }
 .band-mark:active .home-icon { transform: translateY(2px); }
 .band-tag { font-size: .78rem; }
-.band-credit { margin-left: auto; font-size: .72rem; font-weight: 700; color: var(--green-wash); opacity: .85; text-decoration: none; }
+.band-links { margin-left: auto; display: inline-flex; gap: 12px; }
+.band-credit { font-size: .72rem; font-weight: 700; color: var(--green-wash); opacity: .85; text-decoration: none; }
 .band-credit:hover { text-decoration: underline; }
 
 #toast {

@@ -635,21 +635,21 @@ function openHistory() {
   if (firstOpen) closeBtn.focus({ preventScroll: true });
 }
 
-/* ================= 화면: 이름 입력 ================= */
+/* ================= 화면: 별명 입력 ================= */
 
 let joinListBox;
 
 function renderJoin() {
   state.screen = 'join';
-  const input = el('input', { type: 'text', maxlength: '20', placeholder: '이름 또는 별명', id: 'name', autocomplete: 'nickname' });
+  const input = el('input', { type: 'text', maxlength: '20', placeholder: '친구들이 알아볼 수 있는 별명', id: 'name', autocomplete: 'nickname' });
   const form = el('form', { onsubmit: (e) => { e.preventDefault(); join(input.value); } },
-    el('label', { class: 'field', for: 'name' }, el('span', { text: '이름이 뭐예요?' }), input),
+    el('label', { class: 'field', for: 'name' }, el('span', { text: '별명이 뭐예요?' }), input),
     el('button', { class: 'pill big wide', type: 'submit', text: '참여하기' }));
 
   joinListBox = el('div');
   show(
     el('section', { class: 'room-head' }, roomTitle()),
-    el('p', { class: 'muted', style: 'margin-bottom:22px', text: '이름을 알려주면 누가 어느 날 안 되는지 다 같이 볼 수 있어요.' }),
+    el('p', { class: 'muted', style: 'margin-bottom:22px', text: '별명을 알려주면 누가 어느 날 안 되는지 다 같이 볼 수 있어요. 실명은 적지 않아도 돼요.' }),
     demoNotice(),
     form,
     joinListBox,
@@ -670,11 +670,11 @@ function fillJoinList() {
 
 function join(raw) {
   let name = normalizeName(raw);
-  if (!name) { toast('이름을 적어 주세요.'); return; }
+  if (!name) { toast('별명을 적어 주세요.'); return; }
   const existing = state.members.find((m) => m.id === memberKey(name));
   if (existing) {
     name = existing.name;
-    toast(`${name} 이름으로 이어서 표시해요.`);
+    toast(`${name} 별명으로 이어서 표시해요.`);
   } else {
     const me = { id: memberKey(name), name, dates: [], done: false, color: randomFreeColor(), notes: {} };
     state.members.push(me);
@@ -835,7 +835,7 @@ function renderRoom() {
   /* 헤더 */
   const head = el('section', { class: 'room-head' }, roomTitle());
 
-  /* 맨 아래: 모임 관리 (초대, 이름 바꾸기, 방장 설정, 나가기) */
+  /* 맨 아래: 모임 관리 (초대, 별명 바꾸기, 방장 설정, 나가기) */
   const menuItem = (text, onclick, extra = {}) =>
     el('li', {}, el('button', { type: 'button', onclick, ...extra }, el('span', { text }), el('span', { class: 'chev', 'aria-hidden': 'true', text: '›' })));
   const manage = el('section', { class: 'manage' },
@@ -843,7 +843,7 @@ function renderRoom() {
     state.editingMonths ? monthEditor(months) : null,
     el('ul', { class: 'menu-list' },
       menuItem('초대 링크 보내기', shareLink, { class: 'blue' }),
-      menuItem('이름 바꾸기', () => { forgetMe(); render(); }),
+      menuItem('별명 바꾸기', () => { forgetMe(); render(); }),
       state.isHost && !state.editingMonths
         ? menuItem('기간·인원 바꾸기', () => { state.editingMonths = true; state.editDraft = new Set(months); state.editCap = cap || Math.max(CAP_MIN, Math.min(CAP_MAX, total)); render(); }, { 'data-k': 'edit-months' })
         : null,
