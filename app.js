@@ -508,12 +508,6 @@ function eraseMark(ds) {
   return w;
 }
 
-function othersMark(ds) {
-  const w = xMark(ds + '*', false);   // 내 X와 각도가 겹치지 않게 다른 씨앗으로
-  w.classList.add('others');
-  return w;
-}
-
 function xMark(ds, draw) {
   const w = document.createElement('span');
   w.className = 'x' + (draw ? ' draw' : '');
@@ -630,11 +624,7 @@ function renderRoom() {
       el('span', { class: 'num', text: d }),
       hol ? el('span', { class: 'hol', text: hol }) : null);
     if (mine && !past) cell.append(xMark(ds, state.justMarked?.has(ds)));
-    else if (!past) {
-      // 다 표시한 뒤에는 남이 친 X도 연하게 보여줘요 (안 되는 사람이 많을수록 조금 더 진하게)
-      if (reveal && others.length) cell.append(othersMark(ds));
-      if (state.erasing.has(ds)) { const er = eraseMark(ds); if (er) cell.append(er); }
-    }
+    else if (!past && state.erasing.has(ds)) { const er = eraseMark(ds); if (er) cell.append(er); }
     if (reveal && !past && others.length) {
       cell.append(el('span', { class: 'dots', 'aria-hidden': 'true' },
         others.slice(0, 4).map((p) => el('i', { style: `--c:${colorOf(p.name)}` })),
@@ -712,10 +702,9 @@ function wireCalendar(cal) {
 
 function paint(cell, mark) {
   const ds = cell.dataset.date;
-  const x = cell.querySelector('.x:not(.erase):not(.others)');
+  const x = cell.querySelector('.x:not(.erase)');
   if (mark) {
     cell.querySelector('.x.erase')?.remove();
-    cell.querySelector('.x.others')?.remove();
     state.erasing.delete(ds);
     if (!x) cell.append(xMark(ds, true));
   } else if (x) {
