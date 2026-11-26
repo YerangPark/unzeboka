@@ -1,0 +1,39 @@
+# 매달 1일에 공휴일 정보를 받아 holidays.js를 갱신해요.
+# 바뀐 게 있을 때만 커밋하고, 커밋되면 Vercel이 자동으로 다시 배포해요.
+name: 공휴일 업데이트
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'   # 매달 1일 UTC 00:00 = 한국 시간 09:00
+  workflow_dispatch:
+
+permissions:
+  contents: write   # holidays.js를 커밋하려고
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 공휴일 받아오기
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: node scripts/update-holidays.mjs
+
+      - name: 바뀌었으면 커밋
+        run: |
+          if git diff --quiet -- holidays.js; then
+            echo "공휴일 변동 없음"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add holidays.js
+          git commit -m "공휴일 정보 자동 업데이트"
+          git push
