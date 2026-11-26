@@ -85,20 +85,6 @@ function monthName(ym, withYear = false) {
   const [y, m] = parseYM(ym);
   return withYear ? `${y}년 ${m + 1}월` : `${m + 1}월`;
 }
-function monthsPhrase(months) {
-  const names = months.map((ym) => monthName(ym));
-  if (names.length === 1) return `${names[0]} 중에 모여요`;
-  const contiguous = months.every((ym, i) => {
-    if (i === 0) return true;
-    const [y, m] = parseYM(months[i - 1]);
-    const n = new Date(y, m + 1, 1);
-    return ym === ymKey(n.getFullYear(), n.getMonth());
-  });
-  if (names.length === 2) return `${names[0]}이나 ${names[1]} 중에 모여요`;
-  if (contiguous) return `${names[0]}부터 ${names[names.length - 1]} 사이에 모여요`;
-  return `${names.join(', ')} 중에 모여요`;
-}
-
 function newId() {
   const abc = 'abcdefghijkmnpqrstuvwxyz23456789';
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -383,9 +369,7 @@ function renderJoin() {
 
   joinListBox = el('div');
   show(
-    el('section', { class: 'room-head' },
-      el('h1', { text: state.room.title }),
-      roomCaption()),
+    el('section', { class: 'room-head' }, roomTitle()),
     el('p', { class: 'muted', style: 'margin-bottom:22px', text: '이름을 알려주면 누가 어느 날 안 되는지 다 같이 볼 수 있어요.' }),
     demoNotice(),
     form,
@@ -434,10 +418,11 @@ function forgetMe() {
 
 /* ================= 화면: 모임 ================= */
 
-function roomCaption() {
+// 모임 제목 + 바로 옆에 정원 태그
+function roomTitle() {
   const cap = getCapacity();
-  return el('div', { class: 'caption' },
-    el('span', { text: monthsPhrase(getMonths()) }),
+  return el('div', { class: 'title-row' },
+    el('h1', { text: state.room.title }),
     cap ? el('span', { class: 'chip', text: `${cap}명 모임` }) : null);
 }
 
@@ -535,21 +520,22 @@ function renderRoom() {
   const allDone = everyoneDone();
 
   /* 헤더 */
-  const head = el('section', { class: 'room-head' },
-    el('h1', { text: state.room.title }),
-    roomCaption(),
+  const head = el('section', { class: 'room-head' }, roomTitle());
+
+  /* 맨 아래: 모임 관리 (초대, 이름 바꾸기, 방장 설정, 나가기) */
+  const menuItem = (text, onclick, extra = {}) =>
+    el('li', {}, el('button', { type: 'button', onclick, ...extra }, el('span', { text }), el('span', { class: 'chev', 'aria-hidden': 'true', text: '›' })));
+  const manage = el('section', { class: 'manage' },
+    el('p', { class: 'eyebrow', text: '모임 관리' }),
     state.editingMonths ? monthEditor(months) : null,
-    el('div', { class: 'meta' },
-      el('div', { class: 'who' },
-        el('span', {}, '나: ', el('strong', { text: state.me })),
-        el('button', { class: 'textbtn', type: 'button', text: '이름 바꾸기', onclick: () => { forgetMe(); render(); } }),
-        state.isHost && !state.editingMonths
-          ? el('button', { class: 'textbtn', type: 'button', 'data-k': 'edit-months', text: '기간·인원 바꾸기', onclick: () => { state.editingMonths = true; state.editDraft = new Set(months); state.editCap = cap || Math.max(CAP_MIN, Math.min(CAP_MAX, total)); render(); } })
-          : null,
-      ),
-      el('button', { class: 'pill small blue', type: 'button', text: '초대 링크 보내기', onclick: shareLink }),
-    ),
-  );
+    el('ul', { class: 'menu-list' },
+      menuItem('초대 링크 보내기', shareLink, { class: 'blue' }),
+      menuItem('이름 바꾸기', () => { forgetMe(); render(); }),
+      state.isHost && !state.editingMonths
+        ? menuItem('기간·인원 바꾸기', () => { state.editingMonths = true; state.editDraft = new Set(months); state.editCap = cap || Math.max(CAP_MIN, Math.min(CAP_MAX, total)); render(); }, { 'data-k': 'edit-months' })
+        : null,
+      menuItem('모임에서 나가기', leaveRoom, { class: 'danger' }),
+    ));
 
   /* 이름표 */
   const labels = el('div', { style: 'margin-top:18px' },
@@ -653,8 +639,7 @@ function renderRoom() {
   show(
     head, labels, calhead, hint, cal, legend, donebar,
     reveal ? bestCard(today, months, allDone, missing) : lockedCard(),
-    el('div', { class: 'foot-links' },
-      el('button', { class: 'textbtn', type: 'button', text: '모임에서 나가기', onclick: leaveRoom })),
+    manage,
   );
   state.justMarked = null;
   restoreFocus();

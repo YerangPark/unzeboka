@@ -183,9 +183,8 @@ input[type=text]::placeholder { color: var(--faded); font-weight: 500; }
 
 /* ---------- 모임 헤더 ---------- */
 .room-head { margin-bottom: 20px; }
-.room-head .caption { margin-top: 8px; }
-.meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
-.meta .who { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.title-row h1 { display: inline; margin-right: 8px; }
+.title-row .chip { display: inline-block; vertical-align: .55em; white-space: nowrap; }
 
 /* 이름표 */
 .labels { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -398,9 +397,21 @@ button.label:active { transform: translateY(2px); box-shadow: none; }
 .edit-months { margin-top: 14px; }
 .edit-months .actions { display: flex; gap: 14px; align-items: center; margin-top: 18px; }
 
-.foot-links { margin-top: 36px; display: flex; gap: 18px; flex-wrap: wrap; }
-.foot-links .textbtn { color: var(--faded); }
-.foot-links .textbtn:hover { color: var(--red); }
+/* 맨 아래 모임 관리 */
+.manage { margin-top: 36px; }
+.manage .eyebrow { margin-bottom: 8px; }
+.manage .edit-months { margin: 0 0 14px; }
+.menu-list { list-style: none; margin: 0; padding: 0; border: 2px solid var(--swan); border-radius: var(--radius-lg); overflow: hidden; }
+.menu-list li + li { border-top: 2px solid var(--swan); }
+.menu-list button {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  padding: 15px 16px; background: var(--paper); border: 0; cursor: pointer;
+  font-weight: 800; font-size: .98rem; color: var(--ink); text-align: left;
+}
+.menu-list button:active { background: var(--snow); }
+.menu-list .chev { color: var(--faded); font-size: 1.3rem; line-height: 1; }
+.menu-list .blue { color: var(--blue-dark); }
+.menu-list .danger { color: var(--red-dark); }
 
 /* 결과 보기 모드: 달력 위에서도 스크롤되게 */
 .cal.viewing .cell { touch-action: manipulation; }
