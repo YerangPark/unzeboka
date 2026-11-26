@@ -1,0 +1,40 @@
+# 매일 새벽 3시(한국 시간)에 만든 지 30일 지난 모임을 지워요.
+# Actions 탭에서 'Run workflow'로 바로 돌릴 수도 있고, 미리보기(dry run)도 할 수 있어요.
+name: 지난 모임 정리
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # UTC 18:00 = 한국 시간 03:00
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '미리보기만 하기 (지우지 않음)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 이 작업에만 필요한 라이브러리라 저장소에 package.json을 두지 않고 여기서만 설치해요
+      - name: firebase-admin 설치
+        working-directory: scripts
+        run: npm install --no-save --no-audit --no-fund firebase-admin@12
+
+      - name: 지난 모임 지우기
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # 예약 실행은 실제로 지우고, 수동 실행은 체크한 대로
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+        run: node cleanup.mjs
