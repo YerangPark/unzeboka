@@ -1,8 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect x="5" y="12" width="54" height="48" rx="12" fill="#e5e5e5"/>
-  <rect x="5" y="9" width="54" height="48" rx="12" fill="#ffffff" stroke="#e5e5e5" stroke-width="3"/>
-  <path d="M5 21a12 12 0 0 1 12-12h30a12 12 0 0 1 12 12v5H5z" fill="#58cc02"/>
-  <rect x="17" y="3" width="7" height="13" rx="3.5" fill="#58a700"/>
-  <rect x="40" y="3" width="7" height="13" rx="3.5" fill="#58a700"/>
-  <path d="M23 33l18 17M41 33L23 50" stroke="#ff4b4b" stroke-width="7" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 2 88 92">
+  <!-- 메인 화면의 웃는 달력 캐릭터 -->
+  <rect x="10" y="22" width="76" height="70" rx="16" fill="#e5e5e5"/>
+  <rect x="10" y="18" width="76" height="70" rx="16" fill="#ffffff" stroke="#e5e5e5" stroke-width="4"/>
+  <path d="M10 34a16 16 0 0 1 16-16h44a16 16 0 0 1 16 16v4H10z" fill="#58cc02"/>
+  <rect x="28" y="6" width="9" height="20" rx="4.5" fill="#58a700"/>
+  <rect x="59" y="6" width="9" height="20" rx="4.5" fill="#58a700"/>
+  <circle cx="36" cy="56" r="7" fill="#4b4b4b"/>
+  <circle cx="60" cy="56" r="7" fill="#4b4b4b"/>
+  <circle cx="38.5" cy="53.5" r="2.4" fill="#ffffff"/>
+  <circle cx="62.5" cy="53.5" r="2.4" fill="#ffffff"/>
+  <path d="M39 70q9 8 18 0" stroke="#4b4b4b" stroke-width="5" fill="none" stroke-linecap="round"/>
 </svg>
