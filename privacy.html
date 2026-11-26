@@ -28,6 +28,9 @@
     .policy a { color: var(--blue-dark); font-weight: 800; }
     .policy .back { display: inline-block; margin-bottom: 18px; font-weight: 800; color: var(--blue-dark); text-decoration: none; }
   </style>
+  <!-- 방문 통계: Vercel Web Analytics (쿠키 없음) -->
+  <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
   <main class="wrap policy">
@@ -45,6 +48,7 @@
       <tr><th>모임 정보</th><td>모임 이름, 모일 달, 인원, 날짜만/점심·저녁 방식, 만든 시각, 삭제 예정 시각, 방장 확인용 값(비밀 열쇠의 해시)</td></tr>
       <tr><th>참여자 정보</th><td>참여할 때 적은 별명, 안 되는 날짜, 날짜별 메모, 이름표 색, 다 표시했는지 여부, 마지막으로 저장한 시각</td></tr>
       <tr><th>자동으로 남는 정보</th><td>서비스를 여는 과정에서 호스팅·데이터베이스·글꼴 업체의 서버에 접속 기록(IP 주소, 브라우저 정보, 접속 시각)이 남을 수 있어요. 언제보까가 이 기록을 따로 모으거나 분석하지는 않아요.</td></tr>
+      <tr><th>방문 통계</th><td>몇 명이 어떤 페이지를 봤는지 알기 위해 쿠키 없는 방문 통계(Vercel Web Analytics)를 써요. 본 페이지 주소, 들어온 경로(어느 사이트에서 왔는지), 나라, 기기·브라우저 종류를 사람을 알아볼 수 없는 합계로만 봐요.</td></tr>
     </table>
     <p style="margin-top:10px">실명, 이메일, 전화번호, 생년월일 같은 정보는 받지 않아요. 참여할 때는 친구들이 알아볼 수 있는 별명만 적어요.</p>
 
@@ -78,13 +82,13 @@
       <li>방장 표시와 방장 비밀 열쇠 (모임을 만든 브라우저에서만 삭제할 수 있게)</li>
       <li>최근에 열어본 모임 목록 (홈 화면 시계 버튼)</li>
     </ul>
-    <p>브라우저의 사이트 데이터를 지우면 함께 지워져요. 쿠키나 광고·분석 도구는 쓰지 않아요.</p>
+    <p>브라우저의 사이트 데이터를 지우면 함께 지워져요. 쿠키와 광고 도구는 쓰지 않아요.</p>
 
     <h2>6. 정보를 맡기는 곳 (처리 위탁·국외 이전)</h2>
     <p>서비스를 운영하기 위해 아래 업체의 서비스를 이용해요. 이 업체들은 각자의 개인정보처리방침에 따라 정보를 처리해요.</p>
     <table>
       <tr><th>Google (Firebase Firestore)</th><td>모임·참여자 정보 저장. 데이터 위치: 대한민국 서울(asia-northeast3)</td></tr>
-      <tr><th>Vercel</th><td>웹사이트 호스팅. 접속 기록이 미국 등 해외 서버에 남을 수 있어요</td></tr>
+      <tr><th>Vercel</th><td>웹사이트 호스팅과 쿠키 없는 방문 통계. 접속 기록이 미국 등 해외 서버에 남을 수 있어요</td></tr>
       <tr><th>Google Fonts, jsDelivr</th><td>글꼴과 라이브러리 전송. 접속 기록이 해외 서버에 남을 수 있어요</td></tr>
       <tr><th>GitHub</th><td>30일 지난 모임을 지우는 자동 정리 작업 실행 (모임 내용을 기록하지 않아요)</td></tr>
     </table>
