@@ -267,11 +267,13 @@ function openRoom(id) {
     if (!room) {
       gone = true;
       clearTimeout(timer);
+      forgetRoom(id);
       return renderError(roomReady ? '이 모임은 더 이상 없어요.' : '없는 모임이에요. 받은 링크가 맞는지 확인해 주세요.');
     }
     const firstLoad = !state.room;
     state.room = room;
     if (firstLoad) state.mi = initialMonthIndex();
+    rememberRoom(id, room.title);
     const wasReady = ready();
     roomReady = true;
     if (!membersReady) return;
@@ -472,15 +474,82 @@ function renderHome() {
     btn,
   );
 
+  const recent = recentRooms();
   show(
     el('section', { class: 'hero' },
       stickers(),
       el('h1', { text: '언제보까' }),
-      el('span', { class: 'caption', text: '안 되는 날에 X만 쳐!' }),
+      // 말풍선과 같은 줄 오른쪽 끝에 최근 모임 버튼 (기록이 있을 때만)
+      el('div', { class: 'hero-row' },
+        el('span', { class: 'caption', text: '안 되는 날에 X만 쳐!' }),
+        recent.length ? historyButton(recent.length) : null),
     ),
     demoNotice(),
     form,
   );
+}
+
+/* ================= 최근 모임 (이 브라우저에만 저장) ================= */
+
+const RECENT_KEY = 'recentRooms';
+const RECENT_MAX = 10;
+function recentRooms() {
+  try {
+    const list = JSON.parse(lsGet(RECENT_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((r) => r && typeof r.id === 'string') : [];
+  } catch { return []; }
+}
+function rememberRoom(id, title) {
+  const list = recentRooms().filter((r) => r.id !== id);
+  list.unshift({ id, title: String(title || '').slice(0, 40), at: Date.now() });
+  lsSet(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+}
+function forgetRoom(id) {
+  lsSet(RECENT_KEY, JSON.stringify(recentRooms().filter((r) => r.id !== id)));
+}
+
+const CLOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>';
+function historyButton(count) {
+  const b = el('button', { class: 'history-btn', type: 'button', 'aria-label': `최근 모임 ${count}개 보기`, onclick: openHistory });
+  b.innerHTML = CLOCK_SVG;
+  return b;
+}
+
+let historyEl = null;
+function closeHistory() {
+  if (!historyEl) return;
+  historyEl.remove();
+  historyEl = null;
+  document.body.classList.remove('sheet-open');
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHistory(); });
+function openHistory() {
+  const firstOpen = !historyEl;
+  const list = recentRooms();
+  if (!list.length) { closeHistory(); return; }
+  if (!historyEl) { historyEl = el('div', { class: 'sheet-wrap' }); document.body.append(historyEl); }
+  document.body.classList.add('sheet-open');
+  const closeBtn = el('button', { class: 'sheet-close', type: 'button', 'aria-label': '닫기', text: '×', onclick: closeHistory });
+  const when = (t) => { const d = new Date(t); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
+  historyEl.replaceChildren(
+    el('div', { class: 'sheet-backdrop', onclick: closeHistory }),
+    el('section', { class: 'sheet' + (firstOpen ? ' enter' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': '최근 모임' },
+      el('div', { class: 'sheet-grip', 'aria-hidden': 'true' }),
+      el('div', { class: 'sheet-head' }, el('h3', { text: '최근 모임' }), closeBtn),
+      el('ul', { class: 'recent-list' }, list.map((r) => el('li', {},
+        el('a', { class: 'recent-go', href: `?room=${encodeURIComponent(r.id)}` },
+          el('span', { class: 'recent-title', text: r.title || '이름 없는 모임' }),
+          el('span', { class: 'recent-meta' },
+            lsGet('host:' + r.id) === '1' ? el('span', { class: 'chip', text: '방장' }) : null,
+            r.at ? el('span', { text: `${when(r.at)}에 열어봄` }) : null)),
+        el('button', {
+          class: 'recent-rm', type: 'button', 'aria-label': `${r.title} 목록에서 빼기`, text: '×',
+          onclick: () => { forgetRoom(r.id); if (recentRooms().length) openHistory(); else { closeHistory(); renderHome(); } },
+        })))),
+      el('p', { class: 'recent-note', text: '이 브라우저에서 열어본 모임이에요. ×는 목록에서만 빼요.' }),
+    ),
+  );
+  if (firstOpen) closeBtn.focus({ preventScroll: true });
 }
 
 /* ================= 화면: 이름 입력 ================= */
