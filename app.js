@@ -5,7 +5,7 @@ const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('YOUR');
 const FIREBASE_VERSION = '10.12.2';
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 // 초록(모두 되는 날)과 빨강(X 표시)은 의미가 있는 색이라 이름표 색에서 뺐어요
-const STICKER_COLORS = ['#1cb0f6', '#ce82ff', '#ff9600', '#ffc800', '#ff86d0', '#2b70c9', '#a56644', '#777777'];
+const STICKER_COLORS = ['#1cb0f6', '#ce82ff', '#ff9600', '#ffc800', '#ff86d0', '#2b70c9', '#a56644', '#777777', '#00a8b5', '#6c5ce7'];
 const CAP_MIN = 2;
 const CAP_MAX = 30;
 const CAP_DEFAULT = 4;
@@ -21,7 +21,9 @@ const state = {
   mi: 0,               // 보고 있는 달 (months의 인덱스)
   selected: null,
   justMarked: null,    // 방금 X 친 날짜들 (그리는 애니메이션용)
-  sheet: null,         // 아래에서 올라온 날짜 상세 (결과 보기 모드)
+  bestLimit: 3,        // 추천 목록에서 보여줄 개수 (더보기로 늘어나요)
+  sheet: null,
+  noteEdit: null,      // 메모 쓰는 중: { unit, text }         // 아래에서 올라온 날짜 상세 (결과 보기 모드)
   erasing: new Map(),  // 지우개로 지우는 중인 날짜 → 시작 시각
   drag: null,
   deferRender: false,
@@ -72,7 +74,33 @@ function hash(s) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return h >>> 0;
 }
-const colorOf = (name) => STICKER_COLORS[hash(name) % STICKER_COLORS.length];
+// 사람마다 색: 들어올 때 안 쓰는 색 중 랜덤으로 골라 저장해요. 화면에서는 겹치지 않게 한 번 더 정리해요.
+const colorIdx = (name) => state.colorMap?.get(memberKey(name)) ?? hash(name) % STICKER_COLORS.length;
+const colorOf = (name) => STICKER_COLORS[colorIdx(name)];
+const validColor = (c) => Number.isInteger(c) && c >= 0 && c < STICKER_COLORS.length;
+function assignColors() {
+  const map = new Map();
+  const used = new Set();
+  // 저장된 색 먼저 (동시에 들어와서 같은 색이 저장됐다면, 이름순으로 앞사람이 가져가요)
+  for (const m of state.members) {
+    if (validColor(m.color) && !used.has(m.color)) { map.set(m.id, m.color); used.add(m.color); }
+  }
+  // 색이 없거나 겹친 사람은 남은 색으로
+  for (const m of state.members) {
+    if (map.has(m.id)) continue;
+    let c = hash(m.name) % STICKER_COLORS.length;
+    for (let i = 0; i < STICKER_COLORS.length && used.has(c); i++) c = (c + 1) % STICKER_COLORS.length;
+    map.set(m.id, c);
+    used.add(c);
+  }
+  state.colorMap = map;
+}
+function randomFreeColor() {
+  const used = new Set(state.members.map((m) => colorIdx(m.name)));
+  const free = STICKER_COLORS.map((_, i) => i).filter((i) => !used.has(i));
+  const pool = free.length ? free : STICKER_COLORS.map((_, i) => i);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 const tiltOf = (name) => `${((hash(name) % 5) - 2) * 0.7}deg`;
 const normalizeName = (raw) => raw.replace(/\s+/g, ' ').trim().slice(0, 20);
 const memberKey = (name) => encodeURIComponent(name.replace(/\s+/g, '').toLowerCase());
@@ -124,9 +152,10 @@ async function firebaseStore() {
   const db = f.getFirestore(initializeApp(firebaseConfig));
   const roomRef = (id) => f.doc(db, 'rooms', id);
   return {
-    async createRoom(title, months, capacity) {
+    async createRoom(title, months, capacity, slots) {
       const id = newId();
-      await f.setDoc(roomRef(id), { title, months, capacity, createdAt: f.serverTimestamp() });
+      // 날짜만 모임은 slots를 아예 안 보내요 (예전 보안 규칙과도 호환)
+      await f.setDoc(roomRef(id), { title, months, capacity, ...(slots ? { slots: true } : {}), createdAt: f.serverTimestamp() });
       return id;
     },
     watchRoom(id, cb, onErr) {
@@ -135,11 +164,21 @@ async function firebaseStore() {
     async updateRoom(id, patch) { await f.updateDoc(roomRef(id), patch); },
     watchMembers(id, cb, onErr) {
       return f.onSnapshot(f.collection(db, 'rooms', id, 'members'),
-        (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onErr);
+        (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))), onErr);
     },
-    async saveMember(id, { name, dates, done }) {
-      await f.setDoc(f.doc(db, 'rooms', id, 'members', memberKey(name)),
-        { name, dates, done: !!done, updatedAt: f.serverTimestamp() });
+    async saveMember(id, { name, dates, done, color, notes }) {
+      const ref = f.doc(db, 'rooms', id, 'members', memberKey(name));
+      const base = { name, dates, done: !!done, updatedAt: f.serverTimestamp() };
+      const extra = { ...(validColor(color) ? { color } : {}), ...(hasNotes(notes) ? { notes } : {}) };
+      try {
+        await f.setDoc(ref, { ...base, ...extra });
+      } catch (e) {
+        // 보안 규칙이 아직 color/notes를 모르면(예전 규칙) 날짜만이라도 저장해요
+        if (e?.code === 'permission-denied' && Object.keys(extra).length) {
+          await f.setDoc(ref, base);
+          if (extra.notes) toast('메모는 저장하지 못했어요. 방장에게 알려주세요.');
+        } else throw e;
+      }
     },
     async deleteMember(id, key) { await f.deleteDoc(f.doc(db, 'rooms', id, 'members', key)); },
   };
@@ -154,15 +193,15 @@ function demoStore() {
   window.addEventListener('storage', (e) => { if (e.key === KEY) listeners.forEach((f) => f()); });
   const listen = (f) => { listeners.add(f); queueMicrotask(f); return () => listeners.delete(f); };
   return {
-    async createRoom(title, months, capacity) { const d = read(); const id = newId(); d[id] = { title, months, capacity, members: {} }; write(d); return id; },
-    watchRoom(id, cb) { return listen(() => { const r = read()[id]; cb(r ? { title: r.title, months: r.months, capacity: r.capacity } : null); }); },
+    async createRoom(title, months, capacity, slots) { const d = read(); const id = newId(); d[id] = { title, months, capacity, slots: !!slots, members: {} }; write(d); return id; },
+    watchRoom(id, cb) { return listen(() => { const r = read()[id]; cb(r ? { title: r.title, months: r.months, capacity: r.capacity, slots: !!r.slots } : null); }); },
     async updateRoom(id, patch) { const d = read(); if (d[id]) { Object.assign(d[id], patch); write(d); } },
     watchMembers(id, cb) {
       return listen(() => { const r = read()[id]; cb(r ? Object.entries(r.members).map(([k, v]) => ({ id: k, ...v })) : []); });
     },
-    async saveMember(id, { name, dates, done }) {
+    async saveMember(id, { name, dates, done, color, notes }) {
       const d = read(); if (!d[id]) return;
-      d[id].members[memberKey(name)] = { name, dates, done: !!done }; write(d);
+      d[id].members[memberKey(name)] = { name, dates, done: !!done, color, notes, updatedAt: Date.now() }; write(d);
     },
     async deleteMember(id, key) { const d = read(); if (d[id]) { delete d[id].members[key]; write(d); } },
   };
@@ -206,7 +245,7 @@ async function init() {
 
 function onMembers(list) {
   state.members = list
-    .map((m) => ({ ...m, dates: Array.isArray(m.dates) ? m.dates : [], done: !!m.done }))
+    .map((m) => ({ ...m, dates: Array.isArray(m.dates) ? m.dates : [], done: !!m.done, notes: cleanNotes(m.notes), updatedMs: toMs(m.updatedAt) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   if (state.me) {
     if (myMember()) state.wasMember = true;
@@ -233,8 +272,28 @@ function everyoneDone() {
   const total = state.members.length;
   const cap = getCapacity();
   if (!total || (cap && total < cap)) return false;
-  return state.members.every((p) => p.done);
+  return state.members.every(isDone);
 }
+
+/* 자동 완료: 한 번이라도 표시하고, 마지막 표시 후 3분 동안 손대지 않으면 완료로 쳐줘요.
+   창을 닫았는지는 휴대폰에서 알기 어려워서, 저장된 마지막 시각으로 계산해요. */
+const AUTO_DONE_MS = 3 * 60 * 1000;
+function toMs(t) {
+  if (typeof t === 'number') return t;
+  if (t && typeof t.toMillis === 'function') return t.toMillis();
+  return null;
+}
+function isAutoDone(p) {
+  return !p.done && p.dates.length > 0 && p.updatedMs != null && Date.now() - p.updatedMs >= AUTO_DONE_MS;
+}
+function isDone(p) { return p.done || isAutoDone(p); }
+// 시간이 지나 누군가 자동 완료되면 화면을 다시 그려요
+let autoDoneSig = '';
+setInterval(() => {
+  if (state.screen !== 'room') return;
+  const sig = state.members.filter(isAutoDone).map((p) => p.id).join(',');
+  if (sig !== autoDoneSig) { autoDoneSig = sig; render(); }
+}, 15000);
 
 function initialMonthIndex() {
   const ms = getMonths();
@@ -243,6 +302,7 @@ function initialMonthIndex() {
 }
 
 function render() {
+  assignColors();
   if (state.drag) { state.deferRender = true; return; }
   if (!state.room) return;
   if (!state.me) {
@@ -313,7 +373,15 @@ function renderHome() {
   state.screen = 'home';
   const picked = new Set([currentYM()]);
   let capacity = CAP_DEFAULT;
+  let slots = false;
   const input = el('input', { type: 'text', maxlength: '40', placeholder: '예: 연말 송년회', id: 'title' });
+  const modeBtn = (value, title, sub) => el('button', {
+    type: 'button', class: 'mode-opt', 'data-k': 'mode-' + value, 'aria-pressed': String(slots === value),
+    onclick: (e) => {
+      slots = value;
+      e.currentTarget.parentElement.querySelectorAll('.mode-opt').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));
+    },
+  }, el('b', { text: title }), el('small', { text: sub }));
   const btn = el('button', { class: 'pill big wide', type: 'submit', text: '모임 만들기' });
 
   const form = el('form', {
@@ -324,7 +392,7 @@ function renderHome() {
       if (!picked.size) return toast('모일 달을 하나 이상 골라 주세요.');
       btn.disabled = true;
       try {
-        const id = await store.createRoom(title, [...picked].sort(), capacity);
+        const id = await store.createRoom(title, [...picked].sort(), capacity, slots);
         lsSet('host:' + id, '1');
         location.href = `?room=${id}`;
       } catch (err) {
@@ -341,6 +409,10 @@ function renderHome() {
     el('div', { class: 'field' }, el('span', { text: '언제쯤 모일까요?' }),
       monthChips(nextMonths(6), picked, (ym) => (picked.has(ym) ? picked.delete(ym) : picked.add(ym))),
       el('p', { class: 'muted small', text: '여러 달을 골라도 돼요. 고른 달 안에서 가장 좋은 날을 찾아줘요.' })),
+    el('div', { class: 'field' }, el('span', { text: '어떻게 정할까요?' }),
+      el('div', { class: 'modes', role: 'group', 'aria-label': '정하는 방식' },
+        modeBtn(false, '날짜만', '하루 단위로 표시'),
+        modeBtn(true, '점심·저녁까지', '점심/저녁 따로 표시'))),
     btn,
   );
 
@@ -396,7 +468,7 @@ function join(raw) {
     name = existing.name;
     toast(`${name} 이름으로 이어서 표시해요.`);
   } else {
-    const me = { id: memberKey(name), name, dates: [], done: false };
+    const me = { id: memberKey(name), name, dates: [], done: false, color: randomFreeColor(), notes: {} };
     state.members.push(me);
     save(me);
   }
@@ -428,16 +500,49 @@ function roomTitle() {
 function myMember() { return state.me ? state.members.find((m) => m.id === memberKey(state.me)) : null; }
 function ensureMe() {
   let me = myMember();
-  if (!me) { me = { id: memberKey(state.me), name: state.me, dates: [], done: false }; state.members.push(me); }
+  if (!me) { me = { id: memberKey(state.me), name: state.me, dates: [], done: false, color: randomFreeColor(), notes: {} }; state.members.push(me); }
   return me;
 }
 // 다른 사람 표시에 휩쓸리지 않도록, 내가 다 표시하기 전에는 남의 결과를 가려요
 function revealed() { return !!myMember()?.done; }
 function myDateSet() { const me = myMember(); return new Set(me ? me.dates : []); }
-function unavailableOn(ds) { return state.members.filter((m) => m.dates.includes(ds)); }
+function unavailableOn(u) { return state.members.filter((m) => m.dates.includes(u)); }
+
+/* 표시 단위: '날짜만' 모임은 '2026-12-05', '점심·저녁' 모임은 '2026-12-05:lunch' / ':dinner' */
+const SLOT_NAMES = { lunch: '점심', dinner: '저녁' };
+function slotMode() { return !!state.room?.slots; }
+function unitsOf(ds) { return slotMode() ? [`${ds}:lunch`, `${ds}:dinner`] : [ds]; }
+const dsOf = (u) => u.slice(0, 10);
+const slotOf = (u) => u.slice(11) || null;
+/* 메모: 사람마다 날짜(또는 점심/저녁)별로 한 줄씩 */
+const NOTE_MAX = 60;
+function cleanNotes(n) {
+  if (!n || typeof n !== 'object') return {};
+  const out = {};
+  for (const [k, v] of Object.entries(n)) if (typeof v === 'string' && v.trim()) out[k] = v.slice(0, NOTE_MAX);
+  return out;
+}
+const hasNotes = (n) => n && typeof n === 'object' && Object.keys(n).length > 0;
+function notesOn(u) {
+  return state.members.filter((m) => m.notes?.[u]).map((m) => ({ who: m, text: m.notes[u] }));
+}
+function setNote(u, text) {
+  const me = ensureMe();
+  const t = text.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX);
+  me.notes = { ...(me.notes || {}) };
+  if (t) me.notes[u] = t; else delete me.notes[u];
+  state.noteEdit = null;
+  render();
+  save(me);
+  toast(t ? '메모를 남겼어요.' : '메모를 지웠어요.');
+}
+function unitLabel(u) { const sl = slotOf(u); return dateLabel(dsOf(u)) + (sl ? ` ${SLOT_NAMES[sl]}` : ''); }
 
 function save(me) {
-  store.saveMember(state.roomId, { name: me.name, dates: me.dates, done: me.done }).catch((e) => {
+  me.updatedMs = Date.now();
+  // 예전에 색 없이 들어온 사람은, 지금 화면에 보이는 색을 그대로 저장해요
+  if (!validColor(me.color)) me.color = colorIdx(me.name);
+  store.saveMember(state.roomId, { name: me.name, dates: me.dates, done: me.done, color: me.color, notes: me.notes }).catch((e) => {
     console.error(e);
     toast('저장하지 못했어요. 다시 시도해 주세요.');
   });
@@ -513,7 +618,7 @@ function renderRoom() {
   const me = myMember();
   const myDates = new Set(me ? me.dates : []);
   const total = state.members.length;
-  const doneCount = state.members.filter((p) => p.done).length;
+  const doneCount = state.members.filter(isDone).length;
   const cap = getCapacity();
   const missing = cap ? Math.max(0, cap - total) : 0;   // 아직 안 들어온 사람 수
   const allDone = everyoneDone();
@@ -546,7 +651,7 @@ function renderRoom() {
       },
         el('span', { class: 'dot' }),
         p.name,
-        el('span', { class: 'st' + (p.done ? ' done' : ''), text: p.done ? '✓ 완료' : '표시 중' }),
+        el('span', { class: 'st' + (isDone(p) ? ' done' : ''), text: isDone(p) ? '✓ 완료' : '표시 중' }),
         state.isHost && p.id !== myKey
           ? el('button', { class: 'rm', type: 'button', 'aria-label': `${p.name} 빼기`, title: '모임에서 빼기', text: '×', onclick: () => removeMember(p) })
           : null,
@@ -567,9 +672,10 @@ function renderRoom() {
       : null,
   );
   const reveal = !!me?.done;
-  const hint = el('p', { class: 'hint', text: reveal
-    ? '날짜를 누르면 그날 누가 되고 안 되는지 보여요.'
-    : '다른 사람 표시는 가려져 있어요. 내 일정만 보고 안 되는 날에 X를 치세요.' });
+  const slotTip = slotMode() ? '칸 위쪽은 점심, 아래쪽은 저녁이에요. ' : '';
+  const hint = el('p', { class: 'hint', text: slotTip + (reveal
+    ? '날짜를 누르면 누가 되고 안 되는지 보여요.'
+    : '다른 사람 표시는 가려져 있어요. 내 일정만 보고 안 되는 때에 X를 치세요.') });
 
   /* 캘린더 */
   const cal = el('div', { class: 'cal' + (reveal ? ' viewing' : ''), 'aria-label': `${y}년 ${m + 1}월 달력` });
@@ -578,43 +684,82 @@ function renderRoom() {
   const days = new Date(y, m + 1, 0).getDate();
   for (let i = 0; i < firstDay; i++) cal.append(el('div', { 'aria-hidden': 'true' }));
 
+  // 칸 하나(또는 반쪽 하나)의 상태
+  const unitState = (u, past) => {
+    const unav = unavailableOn(u);
+    const mine = myDates.has(u);
+    const status = !reveal ? (mine ? '내가 안 됨' : '')
+      : unav.length ? `${unav.length}명 안 됨` : allDone ? '모두 가능' : '아직 안 되는 사람 없음';
+    return {
+      unav, mine, status,
+      others: unav.filter((p) => p.id !== myKey),
+      allok: !past && reveal && allDone && unav.length === 0,
+      heat: reveal && total && !past ? (unav.length / total).toFixed(3) : 0,
+    };
+  };
+  const decorate = (target, u, st, past) => {
+    if (st.mine && !past) target.append(xMark(u, state.justMarked?.has(u)));
+    else if (!past && state.erasing.has(u)) { const er = eraseMark(u); if (er) target.append(er); }
+    // 메모가 있는 칸은 오른쪽 위에 작은 말풍선
+    if (reveal && !past && notesOn(u).length) {
+      const mk = el('span', { class: 'memo-mark', 'aria-hidden': 'true' });
+      mk.innerHTML = MEMO_SVG;
+      target.append(mk);
+    }
+  };
+  const split = slotMode();
+
   for (let d = 1; d <= days; d++) {
     const ds = ymd(y, m, d);
-    const unav = unavailableOn(ds);
-    const others = unav.filter((p) => p.id !== myKey);
-    const mine = myDates.has(ds);
     const past = ds < today;
     const hol = HOLIDAYS[ds];
     const cls = ['cell'];
     if (past) cls.push('past');
     if (ds === today) cls.push('today');
-    if (ds === state.selected) cls.push('sel');
     if (hol || weekday(ds) === 0) cls.push('red');
-    // 모두 다 표시한 뒤에만 '모두 되는 날'로 확정해서 보여줘요
-    if (!past && reveal && allDone && unav.length === 0) cls.push('allok');
+    const top = [el('span', { class: 'num', text: d }), hol ? el('span', { class: 'hol', text: hol }) : null];
 
-    const status = !reveal ? (mine ? '내가 안 됨' : '')
-      : unav.length ? `${unav.length}명 안 됨` : allDone ? '모두 가능' : '아직 안 되는 사람 없음';
-    const label = `${m + 1}월 ${d}일${hol ? ` ${hol}` : ''}${status ? `, ${status}` : ''}`;
-    const cell = el('button', {
-      type: 'button',
-      class: cls.join(' '),
-      style: `--heat:${reveal && total && !past ? (unav.length / total).toFixed(3) : 0}`,
-      'data-date': ds,
-      'data-k': ds,
-      'aria-label': label,
-      'aria-pressed': past || reveal ? null : String(mine),
-      'aria-haspopup': reveal && !past ? 'dialog' : null,
-      disabled: past,
-    },
-      el('span', { class: 'num', text: d }),
-      hol ? el('span', { class: 'hol', text: hol }) : null);
-    if (mine && !past) cell.append(xMark(ds, state.justMarked?.has(ds)));
-    else if (!past && state.erasing.has(ds)) { const er = eraseMark(ds); if (er) cell.append(er); }
-    if (reveal && !past && others.length) {
-      cell.append(el('span', { class: 'dots', 'aria-hidden': 'true' },
-        others.slice(0, 4).map((p) => el('i', { style: `--c:${colorOf(p.name)}` })),
-        others.length > 4 ? `+${others.length - 4}` : null));
+    if (!split) {
+      const st = unitState(ds, past);
+      if (ds === state.selected) cls.push('sel');
+      // 모두 다 표시한 뒤에만 '모두 되는 날'로 확정해서 보여줘요
+      if (st.allok) cls.push('allok');
+      const cell = el('button', {
+        type: 'button', class: cls.join(' '), style: `--heat:${st.heat}`,
+        'data-unit': ds, 'data-k': ds,
+        'aria-label': `${m + 1}월 ${d}일${hol ? ` ${hol}` : ''}${st.status ? `, ${st.status}` : ''}`,
+        'aria-pressed': past || reveal ? null : String(st.mine),
+        'aria-haspopup': reveal && !past ? 'dialog' : null,
+        disabled: past,
+      }, top);
+      decorate(cell, ds, st, past);
+      if (reveal && !past && st.others.length) {
+        cell.append(el('span', { class: 'dots', 'aria-hidden': 'true' },
+          st.others.slice(0, 4).map((p) => el('i', { style: `--c:${colorOf(p.name)}` })),
+          st.others.length > 4 ? `+${st.others.length - 4}` : null));
+      }
+      cal.append(cell);
+      continue;
+    }
+
+    // 점심·저녁 모임: 칸 위쪽은 점심, 아래쪽은 저녁
+    cls.push('split');
+    const cell = el('div', { class: cls.join(' ') }, el('span', { class: 'cell-head', 'aria-hidden': 'true' }, top));
+    for (const u of unitsOf(ds)) {
+      const st = unitState(u, past);
+      const hcls = ['half', slotOf(u)];
+      if (u === state.selected) hcls.push('sel');
+      if (st.allok) hcls.push('allok');
+      const half = el('button', {
+        type: 'button', class: hcls.join(' '), style: `--heat:${st.heat}`,
+        'data-unit': u, 'data-k': u,
+        'aria-label': `${m + 1}월 ${d}일 ${SLOT_NAMES[slotOf(u)]}${hol ? ` ${hol}` : ''}${st.status ? `, ${st.status}` : ''}`,
+        'aria-pressed': past || reveal ? null : String(st.mine),
+        'aria-haspopup': reveal && !past ? 'dialog' : null,
+        disabled: past,
+      });
+      decorate(half, u, st, past);
+      cell.append(half);
     }
     cal.append(cell);
   }
@@ -631,7 +776,9 @@ function renderRoom() {
   /* 다 표시했어요 */
   const done = !!me?.done;
   const donebar = el('div', { class: 'donebar' + (done ? ' is-done' : '') },
-    el('p', { text: done ? '✓ 다 표시했어요. 바뀌면 언제든 고칠 수 있어요.' : '안 되는 날을 다 쳤나요? 누르면 모두의 결과가 보여요.' }),
+    done
+      ? el('p', { class: 'done-msg' }, whoIcon('ok'), el('span', { text: '다 표시했어요. 바뀌면 언제든 고칠 수 있어요.' }))
+      : el('p', { text: '안 되는 날을 다 쳤나요? 누르면 모두의 결과가 보여요.' }),
     el('button', { class: 'pill small' + (done ? ' outline' : ''), type: 'button', 'data-k': 'done', text: done ? '아직 더 고칠래요' : '다 표시했어요', onclick: toggleDone }),
   );
 
@@ -663,52 +810,52 @@ function progressBar(total, doneCount, cap, missing) {
 function wireCalendar(cal) {
   cal.addEventListener('pointerdown', (e) => {
     if (revealed()) return;               // 보기 모드에선 스크롤이 되도록 그대로 둬요
-    const cell = e.target.closest('.cell');
-    if (!cell || cell.disabled) return;
+    const t = e.target.closest('[data-unit]');
+    if (!t || t.disabled) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
-    if (cell.hasPointerCapture?.(e.pointerId)) cell.releasePointerCapture(e.pointerId);
-    const ds = cell.dataset.date;
-    const mark = !myDateSet().has(ds);   // 처음 누른 칸이 비어 있으면 긋기, X면 지우기
-    state.drag = { mark, dates: new Set([ds]), id: e.pointerId };
-    state.selected = ds;
-    paint(cell, mark);
+    if (t.hasPointerCapture?.(e.pointerId)) t.releasePointerCapture(e.pointerId);
+    const u = t.dataset.unit;
+    const mark = !myDateSet().has(u);    // 처음 누른 칸이 비어 있으면 긋기, X면 지우기
+    state.drag = { mark, dates: new Set([u]), id: e.pointerId };
+    state.selected = u;
+    paint(t, mark);
   });
   cal.addEventListener('click', (e) => {
-    const cell = e.target.closest('.cell');
-    if (!cell || cell.disabled) return;
-    const ds = cell.dataset.date;
-    if (revealed()) return openSheet(ds);
+    const t = e.target.closest('[data-unit]');
+    if (!t || t.disabled) return;
+    const u = t.dataset.unit;
+    if (revealed()) return openSheet(u);
     if (e.detail !== 0) return;           // 터치/마우스는 pointerdown에서 이미 처리했어요
-    state.selected = ds;                  // 키보드(Enter/Space)로 누른 경우
-    setDates([ds], !myDateSet().has(ds));
+    state.selected = u;                   // 키보드(Enter/Space)로 누른 경우
+    setDates([u], !myDateSet().has(u));
   });
 }
 
-function paint(cell, mark) {
-  const ds = cell.dataset.date;
-  const x = cell.querySelector('.x:not(.erase)');
+function paint(t, mark) {
+  const u = t.dataset.unit;
+  const x = t.querySelector('.x:not(.erase)');
   if (mark) {
-    cell.querySelector('.x.erase')?.remove();
-    state.erasing.delete(ds);
-    if (!x) cell.append(xMark(ds, true));
+    t.querySelector('.x.erase')?.remove();
+    state.erasing.delete(u);
+    if (!x) t.append(xMark(u, true));
   } else if (x) {
     x.remove();
-    startErase(ds);
-    if (state.erasing.has(ds)) { const er = eraseMark(ds); if (er) cell.append(er); }
+    startErase(u);
+    if (state.erasing.has(u)) { const er = eraseMark(u); if (er) t.append(er); }
   }
 }
 
 window.addEventListener('pointermove', (e) => {
   const drag = state.drag;
   if (!drag || e.pointerId !== drag.id) return;
-  const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.cell');
-  if (!cell || cell.disabled || !app.contains(cell)) return;
-  const ds = cell.dataset.date;
-  if (drag.dates.has(ds)) return;
-  drag.dates.add(ds);
-  state.selected = ds;
-  paint(cell, drag.mark);
+  const t = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-unit]');
+  if (!t || t.disabled || !app.contains(t)) return;
+  const u = t.dataset.unit;
+  if (drag.dates.has(u)) return;
+  drag.dates.add(u);
+  state.selected = u;
+  paint(t, drag.mark);
 });
 function endDrag(e) {
   const drag = state.drag;
@@ -773,6 +920,7 @@ let sheetReturnFocus = null;
 
 function openSheet(ds) {
   sheetReturnFocus = document.activeElement;
+  if (state.noteEdit?.unit !== ds) state.noteEdit = null;
   state.sheet = ds;
   state.selected = ds;
   render();
@@ -780,6 +928,7 @@ function openSheet(ds) {
 function closeSheet() {
   if (!state.sheet) return;
   state.sheet = null;
+  state.noteEdit = null;
   render();
   sheetReturnFocus?.focus?.({ preventScroll: true });
 }
@@ -802,31 +951,90 @@ function renderSheet() {
 
   const unav = unavailableOn(ds);
   const rest = state.members.filter((p) => !unav.includes(p));
-  const ok = rest.filter((p) => p.done);
-  const pending = rest.filter((p) => !p.done);
+  const ok = rest.filter(isDone);
+  const pending = rest.filter((p) => !isDone(p));
   const mine = myDateSet().has(ds);
-  const hol = HOLIDAYS[ds];
+  const hol = HOLIDAYS[dsOf(ds)];
+  const when = slotOf(ds) ? '이때' : '이 날';
+  const notes = notesOn(ds);
+  const myNote = myMember()?.notes?.[ds] || '';
+  const editing = state.noteEdit?.unit === ds;
+  const hadFocus = document.activeElement?.classList?.contains('note-input');
   const closeBtn = el('button', { class: 'sheet-close', type: 'button', 'aria-label': '닫기', text: '×', onclick: closeSheet });
 
   sheetEl.replaceChildren(
     el('div', { class: 'sheet-backdrop', onclick: closeSheet }),
-    el('section', { class: 'sheet' + (enter ? ' enter' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': dateLabel(ds) },
+    el('section', { class: 'sheet' + (enter ? ' enter' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': unitLabel(ds) },
       el('div', { class: 'sheet-grip', 'aria-hidden': 'true' }),
       el('div', { class: 'sheet-head' },
-        el('h3', {}, dateLabel(ds), hol ? el('small', { text: hol }) : null),
+        el('h3', {}, unitLabel(ds), hol ? el('small', { text: hol }) : null),
         closeBtn),
       el('div', { class: 'who' },
         whoRow('no', '안 돼요', unav),
         whoRow('ok', '돼요', ok)),
       waitingNote(pending),
-      el('button', {
-        class: 'pill big wide ' + (mine ? 'outline' : 'red'), type: 'button',
-        text: mine ? '이 날 X 지우기' : '나도 이 날 안 돼요',
-        onclick: () => setDates([ds], !mine),
-      }),
+      notes.length ? el('ul', { class: 'notes', 'aria-label': '메모' }, notes.map(({ who, text }) =>
+        el('li', { class: who.name === state.me ? 'me' : '' },
+          memoIcon(),
+          el('span', { class: 'note-who', text: who.name }),
+          el('span', { class: 'note-text', text })))) : null,
+      editing ? noteEditor(ds) : null,
+      // 메모를 쓰는 동안에는 메모 입력에만 집중하도록 아래 버튼을 숨겨요
+      editing ? null : el('div', { class: 'sheet-actions' },
+        el('button', {
+          class: 'pill big ' + (mine ? 'outline' : 'red'), type: 'button',
+          text: mine ? `${when} X 지우기` : `나도 ${when} 안 돼요`,
+          onclick: () => setDates([ds], !mine),
+        }),
+        memoButton(ds, myNote)),
     ),
   );
-  if (enter) closeBtn.focus({ preventScroll: true });
+  const input = sheetEl.querySelector('.note-input');
+  if (input && (hadFocus || state.noteEdit?.focus)) {
+    if (state.noteEdit) state.noteEdit.focus = false;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  } else if (enter) closeBtn.focus({ preventScroll: true });
+}
+
+// 파란 말풍선 (아래 두께로 듀오링고처럼 도톰하게)
+const MEMO_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
+  '<path d="M6 7h20a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H14l-5 4.5V23H6a3 3 0 0 1-3-3V10a3 3 0 0 1 3-3z" fill="#1899d6"/>' +
+  '<path d="M6 5h20a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H14l-5 4.5V21H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3z" fill="#1cb0f6"/>' +
+  '<path d="M8.5 11h15M8.5 15.5h10" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>' +
+  '</svg>';
+function memoIcon() {
+  const icon = el('span', { class: 'memo-icon', 'aria-hidden': 'true' });
+  icon.innerHTML = MEMO_SVG;
+  return icon;
+}
+function memoButton(u, myNote) {
+  return el('button', {
+    class: 'pill big outline memo-btn', type: 'button', 'data-k': 'memo',
+    text: myNote ? '메모 고치기' : '메모',
+    onclick: () => { state.noteEdit = { unit: u, text: myNote, focus: true }; render(); },
+  });
+}
+
+function noteEditor(u) {
+  const ne = state.noteEdit;
+  const had = !!myMember()?.notes?.[u];
+  const count = el('span', { class: 'note-count', text: `${ne.text.length}/${NOTE_MAX}` });
+  const input = el('textarea', {
+    class: 'note-input', rows: '2', maxlength: String(NOTE_MAX),
+    placeholder: '예: 7시 이후엔 가능해요',
+    oninput: (e) => { ne.text = e.target.value; count.textContent = `${ne.text.length}/${NOTE_MAX}`; },
+    onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); setNote(u, ne.text); } },
+  });
+  input.value = ne.text;
+  return el('div', { class: 'note-editor' },
+    input,
+    el('div', { class: 'note-bar' },
+      count,
+      el('div', { class: 'note-btns' },
+        el('button', { class: 'textbtn', type: 'button', text: '취소', onclick: () => { state.noteEdit = null; render(); } }),
+        had ? el('button', { class: 'textbtn danger', type: 'button', text: '지우기', onclick: () => setNote(u, '') }) : null,
+        el('button', { class: 'pill small', type: 'button', text: '저장', onclick: () => setNote(u, ne.text) }))));
 }
 
 function bestCard(today, months, allDone, missing) {
@@ -836,17 +1044,21 @@ function bestCard(today, months, allDone, missing) {
     const days = new Date(y, m + 1, 0).getDate();
     for (let d = 1; d <= days; d++) {
       const ds = ymd(y, m, d);
-      if (ds >= today) candidates.push({ ds, unav: unavailableOn(ds) });
+      if (ds >= today) for (const u of unitsOf(ds)) candidates.push({ ds: u, unav: unavailableOn(u), i: candidates.length });
     }
   }
-  candidates.sort((a, b) => a.unav.length - b.unav.length || a.ds.localeCompare(b.ds));
-  const top = candidates.slice(0, 5);
+  // 안 되는 사람이 적은 순, 같으면 날짜·시간 순 (점심이 저녁보다 먼저)
+  candidates.sort((a, b) => a.unav.length - b.unav.length || a.i - b.i);
+  const top = candidates.slice(0, state.bestLimit);
+  const more = candidates.length - top.length;
   const allOk = candidates.filter((c) => c.unav.length === 0).length;
-  const pending = state.members.filter((p) => !p.done);
+  const pending = state.members.filter((p) => !isDone(p));
 
   let title, sub;
-  if (allDone && allOk) { title = `다 같이 되는 날이 ${allOk}일 있어요`; sub = '빠른 날부터 골라봤어요.'; }
-  else if (allDone) { title = '다 같이 되는 날은 없어요'; sub = '안 되는 사람이 적은 날부터 보여줘요.'; }
+  const unitWord = slotMode() ? '때' : '날';
+  const countWord = slotMode() ? `${allOk}번` : `${allOk}일`;
+  if (allDone && allOk) { title = `다 같이 되는 ${unitWord}가 ${countWord} 있어요`; sub = '빠른 순서로 골라봤어요.'; }
+  else if (allDone) { title = `다 같이 되는 ${unitWord}는 없어요`; sub = '안 되는 사람이 적은 순서로 보여줘요.'; }
   else { title = '지금까지 괜찮은 날'; sub = '아직 다 모이지 않아서, 표시한 사람 기준이에요.'; }
 
   const waiting = [
@@ -861,22 +1073,32 @@ function bestCard(today, months, allDone, missing) {
     waiting.length ? el('div', { class: 'waits' }, waiting) : null,
     top.length
       ? el('ol', { class: 'best' }, top.map(({ ds, unav }) => {
-          const [, mm, dd] = ds.split('-').map(Number);
-          const hol = HOLIDAYS[ds];
-          const wd = weekday(ds);
+          const day = dsOf(ds);
+          const [, mm, dd] = day.split('-').map(Number);
+          const hol = HOLIDAYS[day];
+          const wd = weekday(day);
+          const sl = slotOf(ds);
           return el('li', {},
             el('button', { type: 'button', class: unav.length ? '' : 'free', 'data-k': 'best-' + ds, onclick: () => goToDate(ds) },
               el('span', { class: 'tile' + (hol || wd === 0 ? ' red' : '') },
                 el('small', { text: `${mm}월` }), el('b', { text: dd })),
               el('span', { class: 'info' },
-                el('span', { class: 'day', text: `${WEEK[wd]}요일` }, hol ? el('small', { text: hol }) : null),
-                unav.length ? el('span', { class: 'who', text: unav.map((p) => p.name).join(', ') }) : null),
+                el('span', { class: 'day', text: `${WEEK[wd]}요일${sl ? ` ${SLOT_NAMES[sl]}` : ''}` }, hol ? el('small', { text: hol }) : null),
+                unav.length ? el('span', { class: 'unav', text: unav.map((p) => p.name).join(', ') }) : null),
               unav.length
                 ? el('span', { class: 'badge no', text: `${unav.length}명 안 돼요` })
                 : el('span', { class: 'badge ok', text: allDone ? '✓ 다 돼요' : '✓ X 없음' }),
             ));
         }))
       : el('p', { class: 'muted', text: '고른 기간에 남은 날이 없어요. 방장이 기간을 바꿀 수 있어요.' }),
+    more > 0
+      ? el('button', { class: 'more-btn', type: 'button', 'data-k': 'best-more',
+          text: `더보기 (${more}개 더 있어요)`,
+          onclick: () => { state.bestLimit += 3; render(); } })
+      : state.bestLimit > 3 && top.length > 3
+        ? el('button', { class: 'more-btn', type: 'button', 'data-k': 'best-more', text: '접기',
+            onclick: () => { state.bestLimit = 3; render(); } })
+        : null,
   );
 }
 
