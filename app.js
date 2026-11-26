@@ -349,7 +349,6 @@ function renderHome() {
       stickers(),
       el('h1', { text: '언제보까' }),
       el('span', { class: 'caption', text: '안 되는 날에 X만 쳐!' }),
-      el('p', { class: 'lede', text: '친구들한테 링크 하나 보내면, 다 같이 되는 날이 저절로 보여요.' }),
     ),
     demoNotice(),
     form,
@@ -534,6 +533,7 @@ function renderRoom() {
       state.isHost && !state.editingMonths
         ? menuItem('기간·인원 바꾸기', () => { state.editingMonths = true; state.editDraft = new Set(months); state.editCap = cap || Math.max(CAP_MIN, Math.min(CAP_MAX, total)); render(); }, { 'data-k': 'edit-months' })
         : null,
+      menuItem('내 모임 새로 만들기', () => { location.href = location.pathname; }),
       menuItem('모임에서 나가기', leaveRoom, { class: 'danger' }),
     ));
 
