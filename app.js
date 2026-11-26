@@ -1,5 +1,9 @@
+import { inject } from '@vercel/analytics';
 import { firebaseConfig } from './firebase-config.js';
 import { HOLIDAYS } from './holidays.js';
+
+// Initialize Vercel Web Analytics
+inject();
 
 const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('YOUR');
 const FIREBASE_VERSION = '10.12.2';
