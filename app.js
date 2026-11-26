@@ -1231,10 +1231,12 @@ function bestCard(today, months, allDone, missing) {
   const pending = state.members.filter((p) => !isDone(p));
 
   let title, sub;
+  // '날'은 받침이 있어서 이/은, '때'는 받침이 없어서 가/는
   const unitWord = slotMode() ? '때' : '날';
+  const [subj, topic] = slotMode() ? ['가', '는'] : ['이', '은'];
   const countWord = slotMode() ? `${allOk}번` : `${allOk}일`;
-  if (allDone && allOk) { title = `다 같이 되는 ${unitWord}가 ${countWord} 있어요`; sub = '빠른 순서로 골라봤어요.'; }
-  else if (allDone) { title = `다 같이 되는 ${unitWord}는 없어요`; sub = '안 되는 사람이 적은 순서로 보여줘요.'; }
+  if (allDone && allOk) { title = `다 같이 되는 ${unitWord}${subj} ${countWord} 있어요`; sub = '빠른 순서로 골라봤어요.'; }
+  else if (allDone) { title = `다 같이 되는 ${unitWord}${topic} 없어요`; sub = '안 되는 사람이 적은 순서로 보여줘요.'; }
   else { title = '지금까지 괜찮은 날'; sub = '아직 다 모이지 않아서, 표시한 사람 기준이에요.'; }
 
   const waiting = [
