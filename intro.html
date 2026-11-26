@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<script>document.documentElement.classList.add('js')</script>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>언제보까 · 모임 날짜, 링크 하나로 정하기</title>
+  <meta name="description" content="친구들한테 링크 하나만 보내세요. 각자 안 되는 날에 X만 치면 다 같이 되는 날이 보여요. 회원가입 없이 휴대폰에서 바로 쓰는 모임 날짜 정하기 서비스.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="canonical" href="https://unzeboka.vercel.app/intro">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="언제보까">
+  <meta property="og:title" content="언제보까 · 모임 날짜, 링크 하나로 정하기">
+  <meta property="og:description" content="각자 안 되는 날에 X만 치면, 다 같이 되는 날이 보여요.">
+  <meta property="og:url" content="https://unzeboka.vercel.app/intro">
+  <meta property="og:image" content="https://unzeboka.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Noto+Sans+KR:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="intro.css">
+</head>
+<body class="intro">
+
+  <!-- 맨 위: 한 줄 소개 + 시작하기 -->
+  <header class="i-hero">
+    <div class="i-wrap i-hero-grid">
+      <div class="i-hero-text">
+        <a class="i-brand" href="/" aria-label="언제보까 처음 화면">
+          <svg class="i-brand-icon" viewBox="4 2 88 92" aria-hidden="true"><rect x="10" y="22" width="76" height="70" rx="16" fill="#e5e5e5"/><rect x="10" y="18" width="76" height="70" rx="16" fill="#fff" stroke="#e5e5e5" stroke-width="4"/><path d="M10 34a16 16 0 0 1 16-16h44a16 16 0 0 1 16 16v4H10z" fill="#58cc02"/><rect x="28" y="6" width="9" height="20" rx="4.5" fill="#58a700"/><rect x="59" y="6" width="9" height="20" rx="4.5" fill="#58a700"/><circle cx="36" cy="56" r="7" fill="#4b4b4b"/><circle cx="60" cy="56" r="7" fill="#4b4b4b"/><circle cx="38.5" cy="53.5" r="2.4" fill="#fff"/><circle cx="62.5" cy="53.5" r="2.4" fill="#fff"/><path d="M39 70q9 8 18 0" stroke="#4b4b4b" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
+          언제보까
+        </a>
+        <h1>모임 날짜,<br>링크 하나로 끝내요</h1>
+        <p class="i-lede">친구들한테 링크만 보내세요. 각자 안 되는 날에 <b class="i-x">X</b>만 치면, 다 같이 되는 날이 보여요.</p>
+        <a class="pill big i-cta" href="/">모임 만들기</a>
+        <p class="i-sub">회원가입 없이 · 앱 설치 없이 · 휴대폰에서 바로</p>
+      </div>
+      <div class="i-hero-shot">
+        <div class="i-phone"><img src="assets/intro/calendar.png" alt="다 같이 되는 날이 초록으로 칠해진 달력" width="390" height="844"></div>
+        <span class="i-bubble">다 같이 되는 날은 <b>초록!</b></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 사용법 3단계 -->
+  <section class="i-section">
+    <div class="i-wrap">
+      <p class="i-eyebrow reveal">이렇게 써요</p>
+      <h2 class="reveal">딱 세 단계면 돼요</h2>
+      <ol class="i-steps">
+        <li class="reveal" style="--d:0.00s">
+          <div class="i-phone small"><img src="assets/intro/home.png" alt="모임 만들기 화면" width="390" height="844" loading="lazy"></div>
+          <span class="i-num">1</span>
+          <h3>모임 만들기</h3>
+          <p>모임 이름, 인원, 모일 달을 고르고 링크를 단톡방에 보내요.</p>
+        </li>
+        <li class="reveal" style="--d:0.12s">
+          <div class="i-phone small"><img src="assets/intro/marking.png" alt="안 되는 날에 X를 친 달력" width="390" height="844" loading="lazy"></div>
+          <span class="i-num">2</span>
+          <h3>안 되는 날에 X</h3>
+          <p>친구들은 이름만 적고 들어와서, 안 되는 날을 누르거나 쭉 그어요.</p>
+        </li>
+        <li class="reveal" style="--d:0.24s">
+          <div class="i-phone small"><img src="assets/intro/sheet.png" alt="날짜를 누르면 누가 되는지 보여주는 창" width="390" height="844" loading="lazy"></div>
+          <span class="i-num">3</span>
+          <h3>다 같이 되는 날 확인</h3>
+          <p>모두 표시하면 되는 날이 초록으로 칠해지고, 추천 날짜가 나와요.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 기능 소개 -->
+  <section class="i-section i-tint">
+    <div class="i-wrap">
+      <p class="i-eyebrow reveal">이런 점이 좋아요</p>
+      <h2 class="reveal">눈치 안 보고, 깔끔하게</h2>
+      <ul class="i-features">
+        <li class="reveal" style="--d:0.00s"><span class="i-ico" aria-hidden="true">🎯</span><h3>다 안 돼도 최선의 날</h3><p>모두 되는 날이 없으면, 안 되는 사람이 가장 적은 날부터 골라서 추천해 줘요.</p></li>
+        <li class="reveal" style="--d:0.10s"><span class="i-ico" aria-hidden="true">🍚</span><h3>점심·저녁 나눠 정하기</h3><p>날짜만 정할지, 점심과 저녁을 나눠 정할지 모임을 만들 때 골라요.</p></li>
+        <li class="reveal" style="--d:0.20s"><span class="i-ico" aria-hidden="true">💬</span><h3>날짜마다 메모</h3><p>"7시 이후엔 가능해요"처럼 날짜마다 한 줄 메모를 남길 수 있어요.</p></li>
+        <li class="reveal" style="--d:0.00s"><span class="i-ico" aria-hidden="true">👻</span><h3>30일 뒤 자동 정리</h3><p>모임은 만든 날부터 30일이 지나면 깔끔하게 사라져요.</p></li>
+        <li class="reveal" style="--d:0.10s"><span class="i-ico" aria-hidden="true">🙋</span><h3>내 일정대로 솔직하게</h3><p>남의 표시에 맞추다 보면 진짜 되는 날을 놓쳐요. 그래서 내가 다 표시한 뒤에 모두의 결과를 보여줘요.</p></li>
+        <li class="reveal" style="--d:0.20s"><span class="i-ico" aria-hidden="true">📊</span><h3>참여 현황을 한눈에</h3><p>몇 명이 들어왔고 몇 명이 표시를 끝냈는지 막대 그래프로 보여줘요.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 마지막 시작하기 -->
+  <section class="i-final reveal">
+    <div class="i-wrap">
+      <h2>이번 모임은 언제보까?</h2>
+      <p>지금 만들고 단톡방에 링크를 보내 보세요.</p>
+      <a class="pill big i-cta-white" href="/">모임 만들기</a>
+    </div>
+  </section>
+
+  <footer class="band"><a class="band-mark" href="/" aria-label="언제보까 처음 화면으로"><svg class="home-icon" viewBox="0 0 96 96" aria-hidden="true"><rect x="5" y="13" width="86" height="80" rx="20" fill="#fff"/><rect x="24" y="3" width="16" height="27" rx="8" fill="#fff"/><rect x="56" y="3" width="16" height="27" rx="8" fill="#fff"/><rect x="10" y="18" width="76" height="70" rx="16" fill="#fff" stroke="#e5e5e5" stroke-width="4"/><path d="M10 34a16 16 0 0 1 16-16h44a16 16 0 0 1 16 16v4H10z" fill="#58cc02"/><rect x="28" y="8" width="8" height="18" rx="4" fill="#58a700"/><rect x="60" y="8" width="8" height="18" rx="4" fill="#58a700"/><circle cx="36" cy="56" r="6" fill="#4b4b4b"/><circle cx="60" cy="56" r="6" fill="#4b4b4b"/><circle cx="38" cy="54" r="2" fill="#fff"/><circle cx="62" cy="54" r="2" fill="#fff"/><path d="M40 70q8 7 16 0" stroke="#4b4b4b" stroke-width="4" fill="none" stroke-linecap="round"/></svg>언제보까</a><span class="band-tag">안 되는 날에 X만 치면 돼요</span><a class="band-credit" href="https://github.com/YerangPark" target="_blank" rel="noopener">© 2026 YerangPark</a></footer>
+  <script>
+    // 화면에 들어오면 .on을 붙여서 나타나게 해요
+    (() => {
+      const els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) { els.forEach((e) => e.classList.add('on')); return; }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('on'); io.unobserve(en.target); } });
+      }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+      els.forEach((e) => io.observe(e));
+    })();
+  </script>
+</body>
+</html>

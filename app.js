@@ -126,10 +126,20 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 무시 */ 
 function lsDel(k) { try { localStorage.removeItem(k); } catch { /* 무시 */ } }
 
 let toastTimer;
-function toast(msg) {
+// 알림: 잘 됐으면 초록 띠, 문제가 있거나 해야 할 일이 있으면 빨간 띠 (듀오링고 정답·오답 느낌)
+const TOAST_ICON = {
+  ok: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#fff"/><path d="M7 12.5l3.3 3.3L17 9" stroke="#58cc02" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  err: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#fff"/><path d="M12 6.8v6.4" stroke="#ff4b4b" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="17" r="1.7" fill="#ff4b4b"/></svg>',
+};
+const TOAST_ERR = /못했어요|끊겼어요|적어 주세요|골라 주세요|빠졌어요/;
+function toast(msg, kind) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('on');
+  const k = kind || (TOAST_ERR.test(msg) ? 'err' : 'ok');
+  t.className = '';
+  t.innerHTML = `<span class="toast-ico">${TOAST_ICON[k]}</span>`;
+  t.append(el('span', { text: msg }));
+  void t.offsetWidth;   // 같은 알림이 연달아 와도 다시 튀어 오르게
+  t.className = `toast-${k} on`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('on'), 2800);
 }
