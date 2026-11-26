@@ -4,6 +4,7 @@ import { HOLIDAYS } from './holidays.js';
 const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('YOUR');
 const FIREBASE_VERSION = '10.12.2';
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+const IN_APP = /NAVER|KAKAOTALK|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp|; wv\)/i.test(navigator.userAgent);
 // 초록(모두 되는 날)과 빨강(X 표시)은 의미가 있는 색이라 이름표 색에서 뺐어요
 const STICKER_COLORS = ['#1cb0f6', '#ce82ff', '#ff9600', '#ffc800', '#ff86d0', '#2b70c9', '#a56644', '#777777', '#00a8b5', '#6c5ce7'];
 const CAP_MIN = 2;
@@ -149,7 +150,10 @@ async function firebaseStore() {
   const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
   const { initializeApp } = await import(`${base}/firebase-app.js`);
   const f = await import(`${base}/firebase-firestore.js`);
-  const db = f.getFirestore(initializeApp(firebaseConfig));
+  // 네이버·카카오톡 같은 앱 안 브라우저는 실시간 연결이 막히는 일이 있어서 롱 폴링으로 연결해요.
+  // 일반 브라우저는 막히면 자동으로 롱 폴링으로 바꿔요.
+  const db = f.initializeFirestore(initializeApp(firebaseConfig),
+    IN_APP ? { experimentalForceLongPolling: true } : { experimentalAutoDetectLongPolling: true });
   const roomRef = (id) => f.doc(db, 'rooms', id);
   return {
     async createRoom(title, months, capacity, slots) {
@@ -221,26 +225,70 @@ async function init() {
 
   const id = new URLSearchParams(location.search).get('room');
   if (!id) return renderHome();
+  openRoom(id);
+}
 
+// 뒤로 가기로 홈 ↔ 모임을 오가면 새로 그려요
+window.addEventListener('popstate', () => location.reload());
+
+const LOAD_TIMEOUT_MS = 10000;
+function openRoom(id) {
   show(el('p', { class: 'muted', text: '모임을 불러오는 중…' }));
   state.roomId = id;
+  state.room = null;
+  state.members = [];
   state.me = lsGet('name:' + id);
   state.isHost = lsGet('host:' + id) === '1';
+  state.screen = null;
   const onErr = (e) => { console.error(e); toast('실시간 연결이 끊겼어요. 새로고침해 주세요.'); };
 
-  let started = false;
+  // 모임 정보와 참여자 목록을 동시에 불러오고, 둘 다 오면 화면을 그려요
+  let roomReady = false;
+  let membersReady = false;
+  let lastMembers = [];
+  let gone = false;
+  const ready = () => roomReady && membersReady;
+
+  // 10초 안에 안 오면: 처음엔 한 번 자동으로 새로고침, 그래도 안 되면 안내
+  const retryKey = 'retry:' + id;
+  const timer = setTimeout(() => {
+    if (ready() || gone) return;
+    let retried = false;
+    try { retried = sessionStorage.getItem(retryKey) === '1'; sessionStorage.setItem(retryKey, '1'); } catch { retried = true; }
+    if (!retried) return location.reload();
+    renderError('연결이 느려서 모임을 불러오지 못했어요. 와이파이나 데이터를 확인하고 다시 시도해 주세요.', true);
+  }, LOAD_TIMEOUT_MS);
+  const loaded = () => {
+    clearTimeout(timer);
+    try { sessionStorage.removeItem(retryKey); } catch { /* 무시 */ }
+  };
+
   store.watchRoom(id, (room) => {
-    if (!room) return renderError(started ? '이 모임은 더 이상 없어요.' : '없는 모임이에요. 받은 링크가 맞는지 확인해 주세요.');
+    if (!room) {
+      gone = true;
+      clearTimeout(timer);
+      return renderError(roomReady ? '이 모임은 더 이상 없어요.' : '없는 모임이에요. 받은 링크가 맞는지 확인해 주세요.');
+    }
     const firstLoad = !state.room;
     state.room = room;
     if (firstLoad) state.mi = initialMonthIndex();
-    if (!started) {
-      started = true;
-      store.watchMembers(id, onMembers, onErr);
-    } else {
-      render();
-    }
-  }, (e) => { onErr(e); renderError('모임을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.'); });
+    const wasReady = ready();
+    roomReady = true;
+    if (!membersReady) return;
+    if (!wasReady) { loaded(); onMembers(lastMembers); } else render();
+  }, (e) => { onErr(e); clearTimeout(timer); renderError('모임을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.', true); });
+
+  store.watchMembers(id, (list) => {
+    lastMembers = list;
+    const wasReady = ready();
+    membersReady = true;
+    if (!roomReady) return;                 // 모임 정보가 오면 그때 그려요
+    if (!wasReady) loaded();
+    onMembers(list);
+  }, (e) => {
+    onErr(e);
+    if (!ready()) { clearTimeout(timer); renderError('참여자 목록을 불러오지 못했어요. 다시 시도해 주세요.', true); }
+  });
 }
 
 function onMembers(list) {
@@ -302,16 +350,22 @@ function initialMonthIndex() {
 }
 
 function render() {
-  assignColors();
   if (state.drag) { state.deferRender = true; return; }
   if (!state.room) return;
-  if (!state.me) {
-    if (state.screen === 'join') fillJoinList();
-    else renderJoin();
-  } else {
-    renderRoom();
+  try {
+    assignColors();
+    if (!state.me) {
+      if (state.screen === 'join') fillJoinList();
+      else renderJoin();
+    } else {
+      renderRoom();
+    }
+    renderSheet();
+  } catch (e) {
+    // 화면을 그리다 문제가 생겨도 로딩에서 멈추지 않게
+    console.error(e);
+    renderError('화면을 그리다 문제가 생겼어요. 다시 시도해 주세요.', true);
   }
-  renderSheet();
 }
 
 /* ================= 화면: 홈 ================= */
@@ -394,7 +448,9 @@ function renderHome() {
       try {
         const id = await store.createRoom(title, [...picked].sort(), capacity, slots);
         lsSet('host:' + id, '1');
-        location.href = `?room=${id}`;
+        // 새로 페이지를 열지 않고 바로 모임 화면으로 (이미 연결된 상태라 빨라요)
+        history.pushState(null, '', `?room=${id}`);
+        openRoom(id);
       } catch (err) {
         console.error(err);
         btn.disabled = false;
@@ -1173,11 +1229,15 @@ async function shareLink() {
   }
 }
 
-function renderError(msg) {
+function renderError(msg, canRetry = false) {
   state.screen = 'error';
   show(
     el('section', { class: 'hero' }, el('h1', { text: '언제보까' })),
     el('p', { class: 'muted', style: 'margin-bottom:22px', text: msg }),
-    el('a', { href: './', class: 'pill big', text: '새 모임 만들기' }),
+    canRetry
+      ? el('div', { class: 'error-actions' },
+          el('button', { class: 'pill big', type: 'button', text: '다시 시도', onclick: () => location.reload() }),
+          el('a', { href: './', class: 'textbtn', text: '새 모임 만들기' }))
+      : el('a', { href: './', class: 'pill big', text: '새 모임 만들기' }),
   );
 }

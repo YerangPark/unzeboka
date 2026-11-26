@@ -612,3 +612,5 @@ body.sheet-open { overflow: hidden; }
   #toast, .pbar i { transition: none; }
   .sheet.enter, .sheet-wrap .sheet-backdrop { animation: none !important; }
 }
+
+.error-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
