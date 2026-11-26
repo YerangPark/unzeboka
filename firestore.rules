@@ -3,21 +3,31 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // 모임: 링크를 아는 사람은 읽을 수 있고, 기간(months)과 정원(capacity)만 바꿀 수 있어요
-    // expireAt: 만든 날부터 30일 뒤. Firestore TTL 정책이 이 시각이 지나면 자동으로 지워요
+    // expireAt: 만든 날부터 30일 뒤. GitHub Actions(scripts/cleanup.mjs)가 지난 모임을 지워요
+    // hostHash: 방장 비밀 열쇠의 SHA-256(16진수). 열쇠는 방장 브라우저에만 있어요
     match /rooms/{roomId} {
       allow read: if true;
-      allow create: if request.resource.data.keys().hasOnly(['title', 'months', 'capacity', 'slots', 'createdAt', 'expireAt'])
+      allow create: if request.resource.data.keys().hasOnly(['title', 'months', 'capacity', 'slots', 'createdAt', 'expireAt', 'hostHash'])
                     && request.resource.data.title is string
                     && request.resource.data.title.size() > 0
                     && request.resource.data.title.size() <= 40
                     && validMonths(request.resource.data.months)
                     && validCapacity(request.resource.data)
                     && (!('slots' in request.resource.data) || request.resource.data.slots is bool)
-                    && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp);
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['months', 'capacity'])
-                    && validMonths(request.resource.data.months)
-                    && validCapacity(request.resource.data);
-      allow delete: if false;
+                    && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp)
+                    && (!('hostHash' in request.resource.data) || (request.resource.data.hostHash is string && request.resource.data.hostHash.size() == 64));
+      // 1) 기간·정원 바꾸기
+      // 2) 방장 삭제 표시: 보낸 열쇠의 해시가 저장된 hostHash와 같을 때만 deleted를 켤 수 있어요
+      allow update: if (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['months', 'capacity'])
+                        && validMonths(request.resource.data.months)
+                        && validCapacity(request.resource.data))
+                    || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deleteKey'])
+                        && request.resource.data.deleted == true
+                        && 'hostHash' in resource.data
+                        && request.resource.data.deleteKey is string
+                        && hashing.sha256(request.resource.data.deleteKey).toHexString().lower() == resource.data.hostHash);
+      // 방장이 삭제 표시를 한 모임만 지울 수 있어요
+      allow delete: if resource.data.get('deleted', false) == true;
 
       // 참여자: 이름, 안 되는 날짜 목록('2026-12-05' 또는 점심·저녁 모임은 '2026-12-05:lunch'), 다 표시했는지 여부
       match /members/{memberId} {

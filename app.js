@@ -115,6 +115,16 @@ function monthName(ym, withYear = false) {
   const [y, m] = parseYM(ym);
   return withYear ? `${y}년 ${m + 1}월` : `${m + 1}월`;
 }
+// 방장 비밀 열쇠 (32바이트 랜덤) 와 SHA-256 해시(16진수)
+function newHostKey() {
+  const b = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf), (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 function newId() {
   const abc = 'abcdefghijkmnpqrstuvwxyz23456789';
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -167,18 +177,24 @@ async function firebaseStore() {
     IN_APP ? { experimentalForceLongPolling: true } : { experimentalAutoDetectLongPolling: true });
   const roomRef = (id) => f.doc(db, 'rooms', id);
   return {
-    async createRoom(title, months, capacity, slots) {
+    async createRoom(title, months, capacity, slots, hostHash) {
       const id = newId();
       // 날짜만 모임은 slots를 아예 안 보내요 (예전 보안 규칙과도 호환)
       const data = { title, months, capacity, ...(slots ? { slots: true } : {}), createdAt: f.serverTimestamp() };
-      try {
-        // 만든 날부터 30일 뒤 자동 삭제 (Firestore TTL)
-        await f.setDoc(roomRef(id), { ...data, expireAt: f.Timestamp.fromMillis(Date.now() + ROOM_TTL_MS) });
-      } catch (e) {
-        if (e?.code === 'permission-denied') await f.setDoc(roomRef(id), data);   // 예전 보안 규칙이면 만료일 없이
-        else throw e;
+      const exp = { expireAt: f.Timestamp.fromMillis(Date.now() + ROOM_TTL_MS) };   // 만든 날부터 30일 뒤 정리
+      // 보안 규칙이 새 항목을 아직 모르면(예전 규칙) 하나씩 빼고 다시 저장해요
+      const tries = [{ ...data, ...exp, hostHash }, { ...data, ...exp }, data];
+      for (let i = 0; i < tries.length; i++) {
+        try { await f.setDoc(roomRef(id), tries[i]); return { id, keySaved: i === 0 }; }
+        catch (e) { if (e?.code !== 'permission-denied' || i === tries.length - 1) throw e; }
       }
-      return id;
+    },
+    // 방장 삭제: 비밀 열쇠로 '삭제됨' 표시 → 참여자 기록 삭제 → 모임 삭제 (보안 규칙이 열쇠를 확인해요)
+    async deleteRoom(id, hostKey) {
+      await f.updateDoc(roomRef(id), { deleted: true, deleteKey: hostKey });
+      const snap = await f.getDocs(f.collection(db, 'rooms', id, 'members'));
+      await Promise.all(snap.docs.map((d) => f.deleteDoc(d.ref)));
+      await f.deleteDoc(roomRef(id));
     },
     watchRoom(id, cb, onErr) {
       return f.onSnapshot(roomRef(id), (s) => cb(s.exists() ? s.data() : null), onErr);
@@ -220,7 +236,12 @@ function demoStore() {
   window.addEventListener('storage', (e) => { if (e.key === KEY) listeners.forEach((f) => f()); });
   const listen = (f) => { listeners.add(f); queueMicrotask(f); return () => listeners.delete(f); };
   return {
-    async createRoom(title, months, capacity, slots) { const d = read(); const id = newId(); d[id] = { title, months, capacity, slots: !!slots, expireAt: Date.now() + ROOM_TTL_MS, members: {} }; write(d); return id; },
+    async createRoom(title, months, capacity, slots, hostHash) { const d = read(); const id = newId(); d[id] = { title, months, capacity, slots: !!slots, expireAt: Date.now() + ROOM_TTL_MS, hostHash, members: {} }; write(d); return { id, keySaved: true }; },
+    async deleteRoom(id, hostKey) {
+      const d = read(); if (!d[id]) return;
+      if (d[id].hostHash !== await sha256Hex(hostKey)) throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+      delete d[id]; write(d);
+    },
     watchRoom(id, cb) { return listen(() => { const r = read()[id]; cb(r ? { title: r.title, months: r.months, capacity: r.capacity, slots: !!r.slots, expireAt: r.expireAt } : null); }); },
     async updateRoom(id, patch) { const d = read(); if (d[id]) { Object.assign(d[id], patch); write(d); } },
     watchMembers(id, cb) {
@@ -287,11 +308,15 @@ function openRoom(id) {
   };
 
   store.watchRoom(id, (room) => {
-    if (!room) {
+    if (!room || room.deleted) {
       gone = true;
+      roomGone = true;   // 이후에 오는 참여자 소식으로 화면을 다시 그리지 않게
+      dropSheet();
       clearTimeout(timer);
       forgetRoom(id);
-      return renderError(roomReady ? '이 모임은 더 이상 없어요.' : '없는 모임이에요. 받은 링크가 맞는지 확인해 주세요.');
+      if (deletingRoom) return;   // 내가 지우는 중이면 deleteRoom이 안내해요
+      if (room?.deleted || roomReady) return renderError('방장이 모임을 삭제했어요.', false, { wave: true });
+      return renderError('없는 모임이에요. 받은 링크가 맞는지 확인해 주세요.');
     }
     const firstLoad = !state.room;
     state.room = room;
@@ -324,7 +349,9 @@ function openRoom(id) {
   });
 }
 
+let roomGone = false;   // 모임이 지워졌으면 더 이상 그리지 않아요
 function onMembers(list) {
+  if (roomGone) return;
   state.members = list
     .map((m) => ({ ...m, dates: Array.isArray(m.dates) ? m.dates : [], done: !!m.done, notes: cleanNotes(m.notes), updatedMs: toMs(m.updatedAt) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -335,7 +362,7 @@ function onMembers(list) {
       // 저장을 다시 시도하는 동안 잠깐 사라져 보일 수 있어서, 조금 기다렸다가 확인해요
       clearTimeout(kickTimer);
       kickTimer = setTimeout(() => {
-        if (state.me && state.wasMember && !myMember() && savingCount === 0) {
+        if (!roomGone && state.me && state.wasMember && !myMember() && savingCount === 0) {
           forgetMe();
           render();
           toast('모임에서 빠졌어요. 다시 참여할 수 있어요.');
@@ -392,6 +419,7 @@ function initialMonthIndex() {
 }
 
 function render() {
+  if (roomGone) return;
   if (state.drag) { state.deferRender = true; return; }
   if (!state.room) return;
   try {
@@ -488,8 +516,11 @@ function renderHome() {
       if (!picked.size) return toast('모일 달을 하나 이상 골라 주세요.');
       btn.disabled = true;
       try {
-        const id = await store.createRoom(title, [...picked].sort(), capacity, slots);
+        // 방장만 모임을 지울 수 있게: 비밀 열쇠는 이 브라우저에만, 서버엔 해시만
+        const hostKey = newHostKey();
+        const { id, keySaved } = await store.createRoom(title, [...picked].sort(), capacity, slots, await sha256Hex(hostKey));
         lsSet('host:' + id, '1');
+        if (keySaved) lsSet('hostKey:' + id, hostKey);
         // 새로 페이지를 열지 않고 바로 모임 화면으로 (이미 연결된 상태라 빨라요)
         history.pushState(null, '', `?room=${id}`);
         openRoom(id);
@@ -817,7 +848,10 @@ function renderRoom() {
         ? menuItem('기간·인원 바꾸기', () => { state.editingMonths = true; state.editDraft = new Set(months); state.editCap = cap || Math.max(CAP_MIN, Math.min(CAP_MAX, total)); render(); }, { 'data-k': 'edit-months' })
         : null,
       menuItem('내 모임 새로 만들기', () => { location.href = location.pathname; }),
-      menuItem('모임에서 나가기', leaveRoom, { class: 'danger' }),
+      // 방장(삭제 열쇠가 있는 브라우저)은 나가기 대신 모임 삭제
+      lsGet('hostKey:' + state.roomId)
+        ? menuItem('모임 삭제하기', deleteRoom, { class: 'danger' })
+        : menuItem('모임에서 나가기', leaveRoom, { class: 'danger' }),
     ));
 
   /* 이름표 */
@@ -1124,6 +1158,14 @@ function openSheet(ds) {
   state.selected = ds;
   render();
 }
+// 날짜 창을 바로 없애요 (모임이 사라졌을 때)
+function dropSheet() {
+  state.sheet = null;
+  state.noteEdit = null;
+  if (sheetEl) { sheetEl.remove(); sheetEl = null; }
+  sheetOpenFor = null;
+  document.body.classList.remove('sheet-open');
+}
 function closeSheet() {
   if (!state.sheet) return;
   state.sheet = null;
@@ -1348,6 +1390,30 @@ async function removeMember(p) {
   catch (e) { console.error(e); toast('빼지 못했어요. 다시 시도해 주세요.'); }
 }
 
+let deletingRoom = false;
+async function deleteRoom() {
+  const key = lsGet('hostKey:' + state.roomId);
+  if (!key) return;
+  if (!confirm(`'${state.room.title}' 모임을 삭제할까요?\n모든 사람의 표시와 메모가 지워지고, 되돌릴 수 없어요.`)) return;
+  deletingRoom = true;
+  roomGone = true;   // 지우는 동안 참여자가 사라지는 걸 '내가 빠졌다'로 착각하지 않게
+  dropSheet();
+  try {
+    await store.deleteRoom(state.roomId, key);
+    lsDel('hostKey:' + state.roomId);
+    lsDel('host:' + state.roomId);
+    lsDel('name:' + state.roomId);
+    forgetRoom(state.roomId);
+    renderError('모임을 삭제했어요.', false, { wave: true });
+  } catch (e) {
+    console.error(e);
+    deletingRoom = false;
+    roomGone = false;
+    render();
+    toast('모임을 삭제하지 못했어요. 다시 시도해 주세요.');
+  }
+}
+
 async function leaveRoom() {
   if (!confirm('모임에서 나갈까요? 내가 표시한 날짜도 지워져요.')) return;
   const key = memberKey(state.me);
@@ -1395,17 +1461,42 @@ function ghostBuddy() {
   return w;
 }
 
+// 삭제된 모임: 달력 캐릭터가 눈물 한 방울 흘리며 손을 흔들어요
+function waveBuddy() {
+  const w = el('div', { class: 'wave-wrap', 'aria-hidden': 'true' });
+  w.innerHTML =
+    '<svg class="wave" viewBox="0 0 130 120">' +
+      // 흔드는 표시
+      '<g class="wave-lines"><path d="M104 30q8-10 16-4" /><path d="M108 18q6-6 12-2" /></g>' +
+      // 몸통
+      '<rect x="22" y="26" width="76" height="70" rx="16" fill="#e5e5e5"/>' +
+      '<rect x="22" y="22" width="76" height="70" rx="16" fill="#fff" stroke="#e5e5e5" stroke-width="4"/>' +
+      '<path d="M22 38a16 16 0 0 1 16-16h44a16 16 0 0 1 16 16v4H22z" fill="#58cc02"/>' +
+      '<rect x="40" y="12" width="8" height="18" rx="4" fill="#58a700"/><rect x="72" y="12" width="8" height="18" rx="4" fill="#58a700"/>' +
+      // 웃으며 감은 눈, 아쉬운 미소, 눈물
+      '<path d="M43 60q5-5 10 0M67 60q5-5 10 0" stroke="#4b4b4b" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+      '<path d="M52 74q8 6 16 0" stroke="#4b4b4b" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+      '<path class="wave-tear" d="M81 63q4 6 0 9q-4-3 0-9z" fill="#1cb0f6"/>' +
+      '<circle cx="38" cy="70" r="4" fill="#ff86d0" opacity=".3"/><circle cx="82" cy="78" r="4" fill="#ff86d0" opacity=".3"/>' +
+      // 흔드는 팔
+      '<g class="wave-arm"><path d="M96 62q12-4 14-18" stroke="#4b4b4b" stroke-width="5" fill="none" stroke-linecap="round"/>' +
+      '<circle cx="111" cy="41" r="6.5" fill="#fff" stroke="#4b4b4b" stroke-width="3"/></g>' +
+    '</svg>' +
+    '<span class="wave-shadow"></span>';
+  return w;
+}
+
 function renderError(msg, canRetry = false, opts = {}) {
   state.screen = 'error';
   show(
     el('section', { class: 'hero' }, el('h1', { text: '언제보까' })),
-    opts.ghost ? ghostBuddy() : null,
-    el('p', { class: 'muted' + (opts.ghost ? ' ghost-msg' : ''), style: 'margin-bottom:22px', text: msg }),
+    opts.ghost ? ghostBuddy() : opts.wave ? waveBuddy() : null,
+    el('p', { class: 'muted' + (opts.ghost || opts.wave ? ' ghost-msg' : ''), style: 'margin-bottom:22px', text: msg }),
     canRetry
       ? el('div', { class: 'error-actions' },
           el('button', { class: 'pill big', type: 'button', text: '다시 시도', onclick: () => location.reload() }),
           el('a', { href: './', class: 'textbtn', text: '새 모임 만들기' }))
-      : el('div', { class: opts.ghost ? 'ghost-actions' : '' }, el('a', { href: './', class: 'pill big', text: '새 모임 만들기' })),
+      : el('div', { class: opts.ghost || opts.wave ? 'ghost-actions' : '' }, el('a', { href: './', class: 'pill big', text: '새 모임 만들기' })),
   );
 }
 

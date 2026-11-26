@@ -38,13 +38,15 @@ const cutoff = Timestamp.fromMillis(now - ROOM_TTL_MS);
 
 // 1) 만든 지 30일 지난 모임 (예전 모임 포함, 모든 모임에 createdAt이 있어요)
 // 2) 삭제 예정일(expireAt)이 지난 모임
-const [byCreated, byExpire] = await Promise.all([
+// 3) 방장이 지우다 중간에 멈춘 모임 (삭제 표시만 남은 것)
+const [byCreated, byExpire, byDeleted] = await Promise.all([
   db.collection('rooms').where('createdAt', '<=', cutoff).get(),
   db.collection('rooms').where('expireAt', '<=', Timestamp.fromMillis(now)).get(),
+  db.collection('rooms').where('deleted', '==', true).get(),
 ]);
 
 const targets = new Map();
-for (const snap of [byCreated, byExpire]) {
+for (const snap of [byCreated, byExpire, byDeleted]) {
   for (const doc of snap.docs) targets.set(doc.id, doc);
 }
 

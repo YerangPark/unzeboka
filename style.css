@@ -675,3 +675,21 @@ body.sheet-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .ghost, .ghost-shadow, .ghost-z { animation: none; }
 }
+
+/* ---------- 삭제된 모임: 손 흔들며 안녕 ---------- */
+.wave-wrap { position: relative; width: 170px; height: 160px; margin: 8px auto 6px; }
+.wave { position: absolute; left: 10px; top: 6px; width: 150px; animation: wave-bob 2.4s ease-in-out infinite; }
+.wave-arm { transform-origin: 96px 62px; animation: wave-arm 1.2s ease-in-out infinite; }
+.wave-lines path { fill: none; stroke: var(--faded); stroke-width: 3; stroke-linecap: round; animation: wave-lines 1.2s ease-in-out infinite; }
+.wave-tear { transform-origin: 81px 63px; animation: wave-tear 2.4s ease-in infinite; }
+.wave-shadow {
+  position: absolute; left: 45px; bottom: 8px; width: 70px; height: 10px; border-radius: 50%;
+  background: var(--swan); animation: ghost-shadow 2.4s ease-in-out infinite;
+}
+@keyframes wave-bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }
+@keyframes wave-arm { 0%, 100% { transform: rotate(-14deg); } 50% { transform: rotate(18deg); } }
+@keyframes wave-lines { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+@keyframes wave-tear { 0%, 30% { opacity: 0; transform: translateY(-3px) scale(.6); } 45% { opacity: 1; transform: none; } 85% { opacity: 1; transform: translateY(12px); } 100% { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .wave, .wave-arm, .wave-lines path, .wave-tear, .wave-shadow { animation: none; }
+}
